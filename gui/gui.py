@@ -1,0 +1,186 @@
+import pygame
+import pygame_gui
+import sys
+import os
+from resource_path import resource_path
+from .toolbar import Toolbar
+from .control_panel import ControlPanel
+from .measure_panel import MeasurePanel
+from .instruments_panel import InstrumentsPanel
+from .grid_panel import GridPanel
+from .footer_panel import FooterPanel
+
+class DrumGUI:
+    def __init__(self, engine, resolution):
+        self.engine = engine
+        # Asegurarse de que el engine tiene una referencia a la GUI para las callbacks
+        self.engine.gui = self
+
+        self.screen_width = resolution[0]
+        self.screen_height = resolution[1]
+
+        pygame.init()
+        pygame.font.init()
+        pygame.display.set_caption("Drum Wav Creator (pro sequencer)")
+        # El UIManager debe tener las dimensiones de la ventana completa
+        self.manager = pygame_gui.UIManager((self.screen_width, self.screen_height))
+
+        self.clock = pygame.time.Clock()
+        # self.font se usa en otros paneles para dibujar texto directamente
+        self.font = pygame.font.SysFont('Arial', 20)
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.NOFRAME)
+
+        self.assets = {}
+        self.panels = []
+
+        # Este diccionario se actualizará con los valores de los inputs de beats y subdivs
+        # Se inicializa aquí y se accede desde MeasurePanel y se actualiza en el bucle de eventos
+        self.input_values = {'beats': '4', 'subdivisions': '4'}
+
+
+    def load_image(self, name):
+        img_path = os.path.join("assets", "images", f"{name}.png")
+        img_full_path = resource_path(img_path)
+        if name not in self.assets:
+            try:                
+                self.assets[name] = pygame.image.load(img_full_path).convert_alpha()
+            except pygame.error as e:
+                print(f'Error al cargar la imagen "{name}": {e}')
+                # En un proyecto real, aquí no saldrías, manejarías el error de otra forma.
+                # sys.exit()
+                return None
+
+        return self.assets.get(name) # Usar .get para devolver None si la imagen no se cargó
+
+
+    def create_panels(self):
+        print("\nCREADO PANELES DESDE GUIRUN")        
+
+        ## TOOLBAR        
+        self.toolbar = Toolbar(0, 0, self.screen, self)
+        self.panels.append(self.toolbar)
+
+        ## CONTROL PANEL        
+        self.control_panel = ControlPanel(0, self.toolbar.height, self.screen, self.engine, self)
+        self.panels.append(self.control_panel)
+
+        ## MEASURE PANEL        
+        self.measure_panel = MeasurePanel(self.screen_width * .25, self.toolbar.height, self.screen, self.engine, self)
+        self.panels.append(self.measure_panel)
+
+        ## INSTRUMENTS PANEL        
+        self.instruments_panel = InstrumentsPanel(0, self.toolbar.height + self.control_panel.height, self.screen, self)
+        self.panels.append(self.instruments_panel)
+
+        ## GRID PANEL (Este SÍ usa pygame-gui UIManager para eventos, aunque el scroll sea manual)
+        # Asegurarse de pasar el manager a GridPanel
+        self.grid_panel = GridPanel(self.instruments_panel.width, self.toolbar.height + self.control_panel.height,
+                                    self.screen, self.engine, self.manager, self)
+        self.panels.append(self.grid_panel)
+
+        ## FOOTER PANEL
+        # Asumimos dibujado manual a menos que uses widgets de pygame-gui en él.
+        self.footer_panel = FooterPanel(0,
+                                        self.toolbar.height +
+                                        self.control_panel.height +
+                                        self.instruments_panel.height,
+                                        self.screen, self)
+        self.panels.append(self.footer_panel)
+
+        # Asignar la referencia al grid_panel al engine después de crearlo
+        # Esto es necesario para que engine.add_measure pueda llamar a grid_panel._update_content_surface()
+        self.engine.grid_panel = self.grid_panel
+
+
+    # Este método update_panels ya no es necesario, el bucle run llama a draw() o update()
+    # def update_panels(self):
+    #     self.screen.fill((0, 0, 0))
+    #     for panel in self.panels:
+    #         if hasattr(panel, 'update'):
+    #             panel.update()
+
+
+    def run(self):
+        running = True
+        print("esto se ejecuta una vez")
+        self.create_panels() # Crea todos los paneles al inicio        
+
+        # --- Añadir la medida inicial aquí, después de crear los paneles y enlazar grid_panel al engine ---
+        # Esto asegura que grid_panel._update_content_surface() se llama después de que engine.grid_panel está configurado
+        self.engine.add_measure()
+
+
+        while running:
+            time_delta = self.clock.tick(60)/1000.0 # Manejar el tiempo (60 FPS)
+
+            # --- Bucle de Eventos ---
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                    self.engine.stop() # Asegurarse de detener el audio al salir
+
+                # 1. Pasar TODOS los eventos al UIManager primero
+                # Esto permite que los elementos de pygame-gui respondan (clicks en botones, texto en inputs, scroll, etc.)
+                self.manager.process_events(event)
+
+                # --- 2. Manejar eventos específicos de pygame_gui que requieren lógica central de la GUI ---
+                # Capturar cambios en los inputs de beats y subdivisions y actualizar self.input_values
+                if event.type == pygame_gui.UI_TEXT_ENTRY_CHANGED:
+                    # Verificar si el evento proviene del input de beats usando su object_id
+                    if event.ui_element.get_object_ids()[-1] == '#beats_input': # Comparamos con el último object_id
+                         self.input_values['beats'] = event.text # Capturar el nuevo texto del input
+                         print(f"DEBUG: beats_input changed: {self.input_values['beats']}") # Debug para verificar
+
+                    # Verificar si el evento proviene del input de subdivisions usando su object_id
+                    elif event.ui_element.get_object_ids()[-1] == '#subdiv_input': # Comparamos con el último object_id
+                         self.input_values['subdivisions'] = event.text # Capturar el nuevo texto del input
+                         print(f"DEBUG: subdiv_input changed: {self.input_values['subdivisions']}") # Debug para verificar
+
+                # 3. Manejar eventos de Pygame "puros" o eventos para tus widgets personalizados
+                # Pasamos el evento a cada panel para que maneje sus propios elementos no-pygame_gui
+                for panel in self.panels:
+                     if hasattr(panel, 'handle_event'):
+                          panel.handle_event(event)
+
+
+            # --- Fase de Actualización ---
+            # Actualizar el estado del UIManager y sus elementos (posiciones, scroll interno de pygame-gui si aún se usara, etc.)
+            self.manager.update(time_delta)
+            # Si otros paneles tuvieran lógica de update manual (no de dibujado), se llamarían aquí.
+
+            # --- Fase de Dibujado ---
+            # Esta sección redibuja la pantalla en cada frame
+            #print("--- DEBUG: Iniciando sección de Dibujado en gui.run ---")
+            self.screen.fill((60, 60, 60)) # Limpiar la pantalla con un color de fondo
+
+            # --- DIBUJAR CADA PANEL LLAMANDO A draw() O update() SI draw() NO EXISTE ---
+            # Itera sobre la lista de paneles y llama a su método de dibujo manual.
+            # GridPanel tiene draw(), otros paneles como Toolbar/ControlPanel tienen update() que dibuja.
+            for panel in self.panels:
+                 if hasattr(panel, 'draw'):
+                      # Si el panel tiene un método draw dedicado (como GridPanel)
+                      panel.draw(self.screen)
+                 elif hasattr(panel, 'update'):
+                      # Si el panel dibuja dentro de su método update (como Toolbar, ControlPanel)
+                      # Asumimos que update() dibuja directamente a self.screen que guarda el panel.
+                      panel.update() # <-- Llamar a update() para dibujar
+
+
+            # 2. Dibujar todos los elementos de pygame-gui
+            # Esto dibujará los botones, inputs, paneles UIPanel, etc., que son gestionados por el manager.
+            # Se dibujan ENCIMA de lo que dibujaste manualmente en el paso anterior.
+            self.manager.draw_ui(self.screen)
+
+            # 3. Actualizar la pantalla completa de Pygame para mostrar todo lo dibujado
+            pygame.display.update()
+
+            #print("--- DEBUG: Sección de Dibujado en gui.run terminada ---")
+
+
+        # Al salir del bucle, limpia Pygame
+        pygame.quit()
+        sys.exit()
+
+
+# La llamada a gui.run() en main.py inicia el bucle principal.
+# El resto del código en main.py después de gui.run() no se ejecutará hasta que gui.run() termine.
