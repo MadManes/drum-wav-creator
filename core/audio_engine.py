@@ -189,84 +189,61 @@ class AudioEngine:
             accumulated_time += measure_duration
 
     def callback(self, in_data, frame_count, time_info, status):
-        # El callback se ejecuta en otro hilo. Los prints aqu deben ser mínimos.
         buffer = np.zeros((frame_count, CHANNELS), dtype=np.float32)
-        # Reiniciar posición si se completa un loop
     
-        
         with self.lock:
-            if self.playing and self.total_duration > 0:
-                if self.absolute_position >= self.total_duration * SAMPLE_RATE:
-                    self.absolute_position = 0
-                total_duration_samples_rounded = int(round(self.total_duration * SAMPLE_RATE))
-                if total_duration_samples_rounded <= 0:
-                    #print("ADVERTENCIA: Duracin total en samples <= 0 en callback.") # Evitar prints constantes
-                    return (buffer.tobytes(), pyaudio.paContinue)
+            playing = self.playing
+            total_duration = self.total_duration
+            absolute_position = self.absolute_position
+            events = self.events.copy()
+    
+        if playing and total_duration > 0:
+            total_samples = int(total_duration * SAMPLE_RATE)
+    
+            if total_samples > 0:
+                absolute_position %= total_samples
+                current_time = absolute_position / SAMPLE_RATE
+    
+                buffer_start_time = current_time
+                buffer_end_time = current_time + frame_count / SAMPLE_RATE
+    
+                for event in events:
+                    start_time = event["time"]
+                    event_samples = event["samples"]
+                    event_duration = event["duration"]
+    
+                    if start_time >= buffer_end_time:
+                        continue
+                    if start_time + event_duration <= buffer_start_time:
+                        continue
+                    
+                    event_start_frame = int((start_time - buffer_start_time) * SAMPLE_RATE)
+                    sample_offset = max(0, -event_start_frame)
+    
+                    buffer_start_frame = max(0, event_start_frame)
+    
+                    frames_available = min(
+                        frame_count - buffer_start_frame,
+                        len(event_samples) - sample_offset
+                    )
+    
+                    if frames_available > 0:
+                        buffer[
+                            buffer_start_frame : buffer_start_frame + frames_available
+                        ] += event_samples[
+                            sample_offset : sample_offset + frames_available
+                        ]
+    
+                absolute_position += frame_count
+    
+        with self.lock:
+            self.absolute_position = absolute_position
+    
+        buffer = np.clip(buffer, -1, 1)
+        buffer = (buffer * 32767).astype(np.int16)
+    
+        return (buffer.tobytes(), pyaudio.paContinue)
 
-                modulo_result = int(self.absolute_position) % total_duration_samples_rounded
-                current_time = modulo_result / SAMPLE_RATE
-
-                # --- DEBUG Callback: Verificar la lista de eventos ANTES de iterar (opcional) ---
-                # print(f"DEBUG Callback: Procesando buffer en tiempo {current_time:.4f}. Nmero de eventos: {len(self.events)}") # Evitar prints constantes
-
-                for event in self.events:
-                    try: # Usar try-except para atrapar errores dentro del bucle sin romper el callback
-                        start_time = event.get('time')
-                        event_samples = event.get('samples')
-                        event_duration = event.get('duration', 0)
-
-
-                        # --- DEBUG Callback: Verificar el evento individual ---
-                        #print(f"DEBUG Callback: Evento en tiempo {current_time:.4f}, Event start {start_time:.4f}. Inst: {event.get('instruments')}. Samples type: {type(event_samples)}") # Evitar prints constantes
-
-                        # Verificaciones robustas antes de usar los datos del evento
-                        if start_time is None or event_samples is None or not isinstance(event_samples, np.ndarray) or len(event_samples) == 0:
-                             print(f"ADVERTENCIA Callback: Evento invlido o incompleto encontrado en tiempo {current_time:.4f}. Datos: {event}")
-                             continue # Saltar este evento invlido
-
-
-                        buffer_start_time = current_time
-                        buffer_end_time = current_time + frame_count / SAMPLE_RATE
-
-                        if (start_time < buffer_end_time and event_duration + start_time > buffer_start_time):
-
-                            event_start_in_buffer_frames = int((start_time - buffer_start_time) * SAMPLE_RATE)
-
-                            sample_start_in_event_frames = max(0, -event_start_in_buffer_frames)
-                            frames_to_copy = min(frame_count - event_start_in_buffer_frames, len(event_samples) - sample_start_in_event_frames)
-
-                            frames_to_copy = max(0, frames_to_copy)
-
-                            if frames_to_copy > 0:
-                                buffer_start_frame = max(0, event_start_in_buffer_frames)
-                                buffer_end_frame = buffer_start_frame + frames_to_copy
-
-                                sample_start_frame = sample_start_in_event_frames
-                                sample_end_frame = sample_start_frame + frames_to_copy
-
-                                if buffer_end_frame <= frame_count and sample_end_frame <= len(event_samples):
-                                     buffer[buffer_start_frame:buffer_end_frame] += event_samples[sample_start_frame:sample_end_frame]
-                                else:
-                                     # Manejar este caso cortando al mximo posible
-                                     actual_frames_to_copy = min(frame_count - buffer_start_frame, len(event_samples) - sample_start_frame)
-                                     if actual_frames_to_copy > 0:
-                                         buffer[buffer_start_frame:buffer_start_frame + actual_frames_to_copy] += event_samples[sample_start_frame:sample_start_frame + actual_frames_to_copy]
-
-
-                    except Exception as e:
-                        # Capturar cualquier excepcin en el callback y reportarla (sin romper el hilo de audio)
-                        print(f"\nERROR en AudioEngine Callback: {e}")
-                        # Podras aadir ms detalles del evento que caus el error si es posible
-                        # print(f"Evento problemtico: {event}") # Cuidado con el tamao de los datos aqu
-                        # No retornar paComplete a menos que quieras detener el stream
-                        pass # Continuar procesando otros eventos si es posible
-
-
-            self.absolute_position += frame_count
-            buffer = np.clip(buffer, -1, 1)
-            buffer = (buffer * 32767).astype(np.int16)
-
-            return (buffer.tobytes(), pyaudio.paContinue)
         
     
     def get_current_playback_time(self):

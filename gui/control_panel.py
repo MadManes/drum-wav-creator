@@ -1,5 +1,5 @@
 import pygame
-# Asegúrate de que el archivo Button.py est accesible
+import os
 from .button import Button
 
 PANEL_BG_COLOR = (50,50,50)
@@ -182,12 +182,18 @@ class ControlPanel:
             self.is_playing = False # Actualizar el estado local
 
 
-    def _download_wav(self):
-        print("Accin: Descargar WAV")
-        # Llama al mtodo de exportacin del engine
-        # Asegúrate de tener un nombre de archivo y duracin (ej. self.engine.total_duration)
-        # self.engine.export_project("my_song.wav", self.engine.total_duration)
-        pass
+    def _download_wav(self):            
+        print("Acción: Descargar WAV")
+        
+        os.makedirs("exports", exist_ok=True)
+
+        filename = os.path.join("exports", "export.wav")
+
+        try:
+            self.engine.export(filename)
+            print(f"WAV exportado correctamente en: {filename}")
+        except Exception as e:
+            print(f"Error al exportar WAV: {e}")
 
 
 '''import pygame

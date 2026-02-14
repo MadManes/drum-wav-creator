@@ -46,19 +46,31 @@ class GridPanel:
 
 
     def draw_playback_line(self, surface):
-        #if not self.engine.playing:
-        #    return
-
         total_duration = self.engine.total_duration
         if total_duration <= 0 or not self.engine.playing:
             return
 
         current_time = self.engine.get_current_playback_time()
-        progress = current_time / total_duration
+        beat_duration = self.engine.calculate_beat_duration()
         
-        # Calcular posición X en el contenido completo
-        total_width = len(self.engine.measures) * self.measure_width
-        line_x = progress * total_width
+        accumulated_time = 0
+        line_x = 0
+
+        for measure_idx, measure in enumerate(self.engine.measures):
+            beats = measure.get("length", 4)
+            measure_duration = beats * beat_duration
+
+            if current_time < accumulated_time + measure_duration:
+                # Estamos dentro de este compás
+                time_inside_measure = current_time - accumulated_time
+                local_progress = time_inside_measure / measure_duration
+
+                line_x += local_progress * self.measure_width
+                break
+            else:
+                # Pasamos este compás completo
+                line_x += self.measure_width
+                accumulated_time += measure_duration        
         
         # Convertir a posición en el área visible
         visible_line_x = line_x - self.scroll_x
@@ -74,6 +86,8 @@ class GridPanel:
                 self._update_thumb_position()
 
         # Dibujar línea en la posición calculada
+        total_width = len(self.engine.measures) * self.measure_width
+
         if 0 <= line_x <= total_width:
             pygame.draw.line(
                 surface,
