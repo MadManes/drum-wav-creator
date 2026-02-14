@@ -53,8 +53,7 @@ class AudioEngine:
         self.events = []
         self.absolute_position = 0
         self.loop_start_position = 0
-        self.playing = False
-        self.looping = False
+        self.playing = False        
         self.total_duration = 0
         self.lock = threading.Lock()
         self.bpm = 120  #164
@@ -142,8 +141,7 @@ class AudioEngine:
 
     def start(self):
         if not self.playing:
-            self.playing = True
-            self.looping = True
+            self.playing = True            
             self.stream = self.pa.open(
                 format=FORMAT,
                 channels=CHANNELS,
@@ -167,11 +165,10 @@ class AudioEngine:
                 )
                 self.stream.start_stream()
             self.playing = True
-            self.looping = True
+
     def stop(self):
         if self.playing:
-            self.playing = False
-            self.looping = False
+            self.playing = False            
             if self.stream and self.stream.is_active():
                 self.stream.stop_stream()
                 self.stream.close()
@@ -235,7 +232,7 @@ class AudioEngine:
         buffer = np.zeros((frame_count, CHANNELS), dtype=np.float32)
         #current_time = self.absolute_position / SAMPLE_RATE
         with self.lock:
-            if self.looping and self.total_duration > 0:
+            if self.playing and self.total_duration > 0:
                 total_duration_samples_rounded = int(round(self.total_duration * SAMPLE_RATE))
                 modulo_result = int(self.absolute_position) % total_duration_samples_rounded
                 current_time = modulo_result / SAMPLE_RATE

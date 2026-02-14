@@ -3,26 +3,12 @@ import librosa
 import numpy as np
 import os
 from resource_path import resource_path
-
-SAMPLE_RATE = 44100  ## Ya lo estoy usando en un par de lugares, deberia tenerlo en un modulo constants?
+from core.constants import SAMPLE_RATE
 
 # Cargar sonidos
 def load_sound(file, volume=1.0):
 
     sound_path = os.path.join("assets", "sounds", f"{file}.wav") # Asume que tus sonidos estn en 'assets/sounds'
-#     try:
-#         data, samplerate = sf.read(sound_path, dtype='float32')
-#         # soundfile lee como (frames, channels) para stereo, (frames,) para mono.
-#         # Necesitas asegurarte de que todos tus clips sean consistentes (ej. siempre stereo)
-#         if len(data.shape) == 1:
-#             data = np.column_stack((data, data)) # Convertir mono a stereo duplicando canal
-#         elif data.shape[1] > 2:
-#              data = data[:, :2] # Tomar solo los primeros 2 canales si tiene ms
-#         return data # Retorna el array de numpy
-#     except FileNotFoundError:
-#         print(f"Advertencia: Archivo de sonido no encontrado: {sound_path}")
-#         # Retornar un array vaco o sonido de error
-#         return np.zeros((100, self.CHANNELS), dtype=np.float32) # Ejemplo: sonido mudo corto
     
     # Usa resource_path para obtener la ruta correcta, ya sea en desarrollo o empaquetado
     sound_full_path = resource_path(sound_path)
@@ -60,9 +46,7 @@ def load_instruments():
         'F. tom': load_sound('f_tom', 1.5),
         'kick': load_sound('kick', 1.5),
         'F. hihat': load_sound('f_hihat', 0.8)
-    }
-
-    print("\n CARGADO INSTRUMENTOS")
+    }  
 
     return sounds
 

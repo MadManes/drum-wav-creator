@@ -278,7 +278,17 @@ class MeasurePanel:
 
     # Método interno para añadir una medida (llama al engine)
     def _add_measure(self):
-        self.engine.add_measure()
+        beats_text = self.beats_input.get_text().strip()
+        subdiv_text = self.subdiv_input.get_text().strip()
+    
+        try:
+            beats = int(beats_text) if beats_text else 4
+            subdivs = int(subdiv_text) if subdiv_text else 4
+        except ValueError:
+            return
+    
+        self.engine.add_measure(beats, subdivs)
+        self.gui.grid_panel._update_content_surface()
 
     # Método interno para aplicar beats/subdivs a compases seleccionados (llamado por el botón Aceptar)
     def _apply_beats_subdivs_to_selected(self):
@@ -332,5 +342,11 @@ class MeasurePanel:
 
     # Método interno para eliminar compases seleccionados (llama al engine)
     def _delete_selected_measures(self):
-         # La lógica principal de eliminacin ahora est en AudioEngine
-         self.engine.delete_selected_measures()
+        selected = self.gui.grid_panel.selected_measures_indices
+
+        if not selected:
+            return
+
+        self.engine.delete_measures(selected)
+        self.gui.grid_panel.selected_measures_indices = []
+        self.gui.grid_panel._update_content_surface()

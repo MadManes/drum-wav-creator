@@ -12,9 +12,7 @@ from .footer_panel import FooterPanel
 
 class DrumGUI:
     def __init__(self, engine, resolution):
-        self.engine = engine
-        # Asegurarse de que el engine tiene una referencia a la GUI para las callbacks
-        self.engine.gui = self
+        self.engine = engine        
 
         self.screen_width = resolution[0]
         self.screen_height = resolution[1]
@@ -87,28 +85,17 @@ class DrumGUI:
                                         self.screen, self)
         self.panels.append(self.footer_panel)
 
-        # Asignar la referencia al grid_panel al engine después de crearlo
-        # Esto es necesario para que engine.add_measure pueda llamar a grid_panel._update_content_surface()
-        self.engine.grid_panel = self.grid_panel
-
-
-    # Este método update_panels ya no es necesario, el bucle run llama a draw() o update()
-    # def update_panels(self):
-    #     self.screen.fill((0, 0, 0))
-    #     for panel in self.panels:
-    #         if hasattr(panel, 'update'):
-    #             panel.update()
-
-
     def run(self):
         running = True
         print("esto se ejecuta una vez")
         self.create_panels() # Crea todos los paneles al inicio        
 
         # --- Añadir la medida inicial aquí, después de crear los paneles y enlazar grid_panel al engine ---
-        # Esto asegura que grid_panel._update_content_surface() se llama después de que engine.grid_panel está configurado
-        self.engine.add_measure()
+        initial_beats = int(self.input_values['beats'])
+        initial_subdiv = int(self.input_values['subdivisions'])
+        self.engine.add_measure(initial_beats, initial_subdiv)
 
+        self.grid_panel._update_content_surface()
 
         while running:
             time_delta = self.clock.tick(60)/1000.0 # Manejar el tiempo (60 FPS)

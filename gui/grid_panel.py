@@ -21,6 +21,7 @@ class GridPanel:
         self.measure_width = 600 # Ancho fijo para cada compás
         self.header_height = 30 # Altura fija de la cabecera del compás
 
+        self.user_scrolling = False
         self.scrollbar_height = 20
 
         self.visible_area_rect = pygame.Rect(self.x, self.y, self.width, self.height - self.scrollbar_height)
@@ -49,7 +50,7 @@ class GridPanel:
         #    return
 
         total_duration = self.engine.total_duration
-        if total_duration <= 0:
+        if total_duration <= 0 or not self.engine.playing:
             return
 
         current_time = self.engine.get_current_playback_time()
@@ -62,14 +63,15 @@ class GridPanel:
         # Convertir a posición en el área visible
         visible_line_x = line_x - self.scroll_x
         
-        # Auto-scroll si la línea está cerca del borde
-        scroll_margin = self.visible_area_rect.width * 0.5
-        if visible_line_x > self.visible_area_rect.width - scroll_margin:
-            self.scroll_x = min(self.max_scroll_x, line_x - self.visible_area_rect.width + scroll_margin)
-            self._update_thumb_position()
-        elif visible_line_x < scroll_margin:
-            self.scroll_x = max(0, line_x - scroll_margin)
-            self._update_thumb_position()
+        # Auto-scroll solo si el usuario no esta manipulando el scroll
+        if self.engine.playing and not self.user_scrolling:
+            scroll_margin = self.visible_area_rect.width * 0.5
+            if visible_line_x > self.visible_area_rect.width - scroll_margin:
+                self.scroll_x = min(self.max_scroll_x, line_x - self.visible_area_rect.width + scroll_margin)
+                self._update_thumb_position()
+            elif visible_line_x < scroll_margin:
+                self.scroll_x = max(0, line_x - scroll_margin)
+                self._update_thumb_position()
 
         # Dibujar línea en la posición calculada
         if 0 <= line_x <= total_width:
@@ -95,19 +97,7 @@ class GridPanel:
         beats_per_measure = measure.get('length', 4)
         #print(f"DEBUG: _draw_measure_content: Beats per measure: {beats_per_measure} para Compás {measure_idx + 1}")
 
-        subdivisions_per_beat = 16
-        # NOTA: Esta lógica para obtener subdivisions_per_beat DEBE COINCIDIR con handle_event
-        if self.engine.patterns and list(self.engine.patterns.values()):
-            first_instrument_patterns = list(self.engine.patterns.values())[0]
-            if measure_idx < len(first_instrument_patterns) and beats_per_measure > 0:
-                 if measure_idx < len(first_instrument_patterns) and 0 < len(first_instrument_patterns[measure_idx]):
-                      try:
-                          subdivisions_per_beat = len(first_instrument_patterns[measure_idx][0])
-                      except IndexError:
-                           #print(f"Advertencia: _draw_measure_content - No se pudo obtener subdivisions_per_beat para Compás {measure_idx + 1} desde patrón. Usando defecto 16.")
-                           subdivisions_per_beat = 16
-
-                 subdivisions_per_beat = max(1, subdivisions_per_beat)
+        subdivisions_per_beat = self.engine.get_subdivisions(measure_idx)
 
         #print(f"DEBUG: _draw_measure_content: Subdivisions per beat: {subdivisions_per_beat} para Compás {measure_idx + 1}")
 
@@ -116,7 +106,8 @@ class GridPanel:
         #print(f"DEBUG: _draw_measure_content: Visual beat_width: {beat_width:.2f}, subdiv_width: {subdiv_width:.2f} para Compás {measure_idx + 1}")
 
 
-        num_instruments = len(self.engine.patterns.keys())
+        instruments = self.engine.get_instruments()
+        num_instruments = len(instruments)
         drawable_grid_area_height = max(0, self.current_content_draw_height - self.header_height)
         inst_row_height = drawable_grid_area_height / num_instruments if num_instruments > 0 else 40
 
@@ -126,31 +117,13 @@ class GridPanel:
             for subdiv_idx in range(subdivisions_per_beat):
                 x_pos = beat_x_base + (subdiv_idx * subdiv_width)
 
-                for inst_idx, inst in enumerate(self.engine.patterns.keys()):
+                for inst_idx, inst in enumerate(instruments):
                     y_pos = y_start + inst_idx * inst_row_height
                     rect = pygame.Rect(x_pos, y_pos, subdiv_width - 1, inst_row_height - 1)
 
                     state = 0 # Estado por defecto es 0 (apagado)
-                    # --- DEBUG: Intentar leer el estado de la celda ---
-                    try:
-                        if inst_idx < len(self.engine.patterns.keys()) and \
-                           measure_idx < len(self.engine.patterns[inst]) and \
-                           beat_idx < len(self.engine.patterns[inst][measure_idx]) and \
-                           subdiv_idx < len(self.engine.patterns[inst][measure_idx][beat_idx]):
-
-                             state = self.engine.patterns[inst][measure_idx][beat_idx][subdiv_idx]
-                             # --- DEBUG: Imprimir el estado leído para esta celda ---
-                             #print(f"DEBUG: _draw_measure_content - Comps {measure_idx + 1}, Inst '{inst}', Beat {beat_idx + 1}, Subdiv {subdiv_idx + 1}: Estado ledo = {state}")
-
-                        else:
-                             # Esto puede ocurrir si el pattern en el engine no tiene la forma esperada
-                             #print(f"ADVERTENCIA (Indices Fuera): _draw_measure_content - ndices {measure_idx}, {inst_idx}, {beat_idx}, {subdiv_idx} fuera de rango para patrn de {inst}.")
-                             state = 0 # Asegurarse de que el estado es 0 si hay un problema de ndice
-
-                    except IndexError:
-                         # Esto no debería ocurrir si la lógica de actualización de patrones es correcta
-                         #print(f"ADVERTENCIA (IndexError): _draw_measure_content - Error de ndice para {inst} en Comps {measure_idx}, Beat {beat_idx}, Subdiv {subdiv_idx}")
-                         state = 0 # Asegurarse de que el estado es 0 si hay una excepcin
+                    
+                    state = self.engine.get_cell_state(inst, measure_idx, beat_idx, subdiv_idx)
 
 
                     color = (200, 0, 0) if state == 1 else (80, 80, 80)
@@ -266,6 +239,7 @@ class GridPanel:
             if self.max_scroll_x > 0 and self.scrollbar_thumb_rect.collidepoint(event.pos):
                 print(f"DEBUG: Clic en scrollbar_thumb_rect: {self.scrollbar_thumb_rect}")
                 self.is_dragging_thumb = True
+                self.user_scrolling = True
                 self.thumb_drag_start_x = event.pos[0]
                 self.scroll_start_on_drag = self.scroll_x
                 print(f"DEBUG: Empezando a arrastrar thumb. scroll_x inicial: {self.scroll_x}")
@@ -323,20 +297,9 @@ class GridPanel:
 
                     measure = self.engine.measures[measure_idx]
                     beats_per_measure = measure.get('length', 4)
+                    
                     # --- Lógica de cálculo de Subdivisions por beat para mapeo de clic ---
-                    # NOTA: Esta lógica DEBE COINCIDIR con _draw_measure_content
-                    subdivisions_per_beat = 16
-                    if self.engine.patterns and list(self.engine.patterns.values()):
-                        first_instrument_patterns = list(self.engine.patterns.values())[0]
-                        if measure_idx < len(first_instrument_patterns) and beats_per_measure > 0:
-                            if measure_idx < len(first_instrument_patterns) and 0 < len(first_instrument_patterns[measure_idx]):
-                                try:
-                                    subdivisions_per_beat = len(first_instrument_patterns[measure_idx][0])
-                                except IndexError:
-                                    print(f"Advertencia: handle_event - No se pudo obtener subdivisions_per_beat para Compás {measure_idx + 1} desde patrón. Usando defecto 16.")
-                                    subdivisions_per_beat = 16
-
-                            subdivisions_per_beat = max(1, subdivisions_per_beat)
+                    subdivisions_per_beat = self.engine.get_subdivisions(measure_idx)
 
                     print(f"DEBUG: Mapeo de clic para Compás {measure_idx + 1}: Beats per measure usado: {beats_per_measure}, Subdivisions per beat usado: {subdivisions_per_beat}")
                     beat_width = self.measure_width / beats_per_measure if beats_per_measure > 0 else self.measure_width
@@ -353,26 +316,13 @@ class GridPanel:
                     print(f"DEBUG: Clic en Compás {measure_idx + 1} mapeado a: InstIdx: {inst_idx}, BeatIdx: {beat_idx}, SubdivIdx: {subdiv_idx}")
 
                     # --- Lógica de ToggLEAR el estado de la celda ---
-                    instrument_list = list(self.engine.patterns.keys())
+                    instrument_list = self.engine.get_instruments()
                     if 0 <= inst_idx < len(instrument_list):
                         instrument_name = instrument_list[inst_idx]
                         # Verificar que los índices calculados existan en la estructura ACTUAL del patrón.
-                        if measure_idx < len(self.engine.patterns[instrument_name]) and \
-                            beat_idx < len(self.engine.patterns[instrument_name][measure_idx]) and \
-                            subdiv_idx < len(self.engine.patterns[instrument_name][measure_idx][beat_idx]):
-
-                            current_state = self.engine.patterns[instrument_name][measure_idx][beat_idx][subdiv_idx]
-                            new_state = 1 if current_state == 0 else 0
-                            self.engine.patterns[instrument_name][measure_idx][beat_idx][subdiv_idx] = new_state # <--- Toggles state
-
-                            self.engine.generate_events()
-                            self._update_content_surface()
-                            print(f"DEBUG: Celda toggleda en: Comps {measure_idx + 1}, Instrumento {instrument_name}, Beat {beat_idx + 1}, Subdiv {subdiv_idx + 1}. Nuevo estado: {new_state}")
-                            return # Consumir el evento si es un clic en una celda vlida
-                        else:
-                            print(f"ADVERTENCIA (handle_event): ndices calculados ({measure_idx}, {beat_idx}, {subdiv_idx}) fuera de rango para patrn de {instrument_name}. Patrn actual size: beats={len(self.engine.patterns[instrument_name][measure_idx]) if measure_idx < len(self.engine.patterns[instrument_name]) else 'N/A'}, subdivs={len(self.engine.patterns[instrument_name][measure_idx][0]) if measure_idx < len(self.engine.patterns[instrument_name]) and len(self.engine.patterns[instrument_name][measure_idx]) > 0 else 'N/A'}")
-
-
+                        self.engine.toggle_cell(instrument_name, measure_idx, beat_idx, subdiv_idx)
+                        self._update_content_surface()
+                        return
                     else:
                         print(f"ADVERTENCIA (handle_event): ndice de instrumento calculado ({inst_idx}) fuera de rango. Nmero de instrumentos: {len(instrument_list)}")
 
@@ -381,6 +331,7 @@ class GridPanel:
              if self.is_dragging_thumb:
                   print("DEBUG: MOUSEBUTTONUP (Left) Terminando de arrastrar thumb.")
                   self.is_dragging_thumb = False
+                  self.user_scrolling = False
 
 
         elif event.type == pygame.MOUSEMOTION and self.is_dragging_thumb:

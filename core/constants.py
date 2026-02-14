@@ -1,0 +1,6 @@
+# core/constants.py
+
+SAMPLE_RATE = 44100
+CHANNELS = 2
+BUFFER_SIZE = 1024
+DEFAULT_BPM = 155
