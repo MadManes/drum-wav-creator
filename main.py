@@ -6,7 +6,8 @@ from gui.gui import DrumGUI
 
 
 if __name__ == "__main__":    
-    pygame.init()
+    pygame.init()    
+    pygame.font.init()
     sounds = sl.load_instruments()   # Cargo instrumentos
     engine = AudioEngine(sounds)     # creo engine pasando sonidos    
     resolution = vr.get_resolution()

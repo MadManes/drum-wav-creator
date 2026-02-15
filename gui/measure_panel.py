@@ -186,13 +186,13 @@ class MeasurePanel:
         beats = set()
         subdivs = set()
         for idx in selected:
-            beats.add(self.engine.measures[idx]['length'])
-            subdivs.add(self.engine.measures[idx]['subdivisions'])
+            beats.add(self.engine.get_measure_length(idx))
+            subdivs.add(self.engine.get_subdivisions(idx))
         
         # Actualizar labels
         beats_text = f"Beats: {beats.pop()}" if len(beats) == 1 else "Beats: Varios"
         subdiv_text = f"Subdiv: {subdivs.pop()}" if len(subdivs) == 1 else "Subdiv: Varios"
-        bpm_text = f"BPM: {self.engine.bpm}"
+        bpm_text = f"BPM: {self.engine.get_bpm()}"
         
         # Calcular rango de medidas si son consecutivas
         sorted_indices = sorted(selected)
@@ -246,25 +246,18 @@ class MeasurePanel:
         except ValueError:
             self.repeat_status_label.set_text("Error: Ingresa un número válido ≥1")
             return
-            
+
         selected = sorted(self.gui.grid_panel.selected_measures_indices)
+        if not selected:
+            return
+
         start_idx = selected[0]
         end_idx = selected[-1]
-        original_measures = self.engine.measures[start_idx:end_idx+1]
-        
-        # Duplicar patrones de instrumentos
-        for _ in range(repeat_times):
-            for i in range(start_idx, end_idx+1):
-                self.engine.measures.insert(end_idx+1, self.engine.measures[i].copy())
-                for inst in self.engine.patterns:
-                    self.engine.patterns[inst].insert(end_idx+1, self.engine.patterns[inst][i].copy())
-        
-        # Actualizar UI
-        self.engine.total_duration = self.engine.calculate_total_duration()
-        self.engine.generate_events()
+
+        self.engine.repeat_measures(start_idx, end_idx, repeat_times)
+
         self.gui.grid_panel._update_content_surface()
         self.repeat_status_label.set_text(f"¡Repetido {repeat_times} veces!")
-
 
     def draw(self, surface):
         ## NO ESTOY DIBUJANDO NADA POR AHORA CON ESTE METODO (antes dibujaba el fondo)
@@ -292,52 +285,31 @@ class MeasurePanel:
 
     # Método interno para aplicar beats/subdivs a compases seleccionados (llamado por el botón Aceptar)
     def _apply_beats_subdivs_to_selected(self):
-        beats_str = self.beats_input.get_text() # Leer directamente de los inputs
+        beats_str = self.beats_input.get_text()
         subdivs_str = self.subdiv_input.get_text()
-
+    
         try:
             new_beats = int(beats_str)
             new_subdivs = int(subdivs_str)
             if new_beats <= 0 or new_subdivs <= 0:
-                 print("Advertencia: Beats y Subdivisiones deben ser mayores que 0.")
-                 return
-
+                return
         except ValueError:
-            print("Error: Valores de beats o subdivisiones no numricos. No se aplicarn los cambios.")
             return
-
+    
         selected_indices = self.gui.grid_panel.selected_measures_indices
-
         if not selected_indices:
-            print("Ningún compás seleccionado para modificar.")
             return
-
-        # Aplicar los cambios a cada compás seleccionado
+    
         for measure_idx in selected_indices:
-            if 0 <= measure_idx < len(self.engine.measures):
-                # Actualizar la longitud y las subdivisiones en la informacin de la medida en el engine
-                self.engine.measures[measure_idx]['length'] = new_beats
-                self.engine.measures[measure_idx]['subdivisions'] = new_subdivs
-
-                # Actualizar la estructura del patrn para este compás en cada instrumento
-                new_pattern_structure = [[0] * new_subdivs for _ in range(new_beats)]
-
-                for inst in self.engine.patterns:
-                    if measure_idx < len(self.engine.patterns[inst]):
-                         # Reemplazamos completamente la lista del compás con la nueva estructura de ceros
-                         # Usamos una reconstruccin explcita para asegurar una copia nueva
-                         self.engine.patterns[inst][measure_idx] = [] # Vaciar la lista de beats
-                         for beat_list in new_pattern_structure:
-                              self.engine.patterns[inst][measure_idx].append(beat_list[:]) # Añadir copia de cada lista de subdivs
-
-
-        # Recalcular duracin total y eventos en el engine y actualizar el grid
-        self.engine.total_duration = self.engine.calculate_total_duration()
-        self.engine.generate_events()
-        self.gui.grid_panel._update_content_surface() # Notificar al grid para redibujarse
-
-        # Limpiar la seleccin despus de aplicar los cambios
+            self.engine.update_measure_structure(
+                measure_idx,
+                new_beats,
+                new_subdivs
+            )
+    
         self.gui.grid_panel.selected_measures_indices = []
+        self.gui.grid_panel._update_content_surface()
+
 
 
     # Método interno para eliminar compases seleccionados (llama al engine)

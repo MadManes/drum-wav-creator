@@ -16,9 +16,7 @@ class DrumGUI:
 
         self.screen_width = resolution[0]
         self.screen_height = resolution[1]
-
-        pygame.init()
-        pygame.font.init()
+        
         pygame.display.set_caption("Drum Wav Creator (pro sequencer)")
         # El UIManager debe tener las dimensiones de la ventana completa
         self.manager = pygame_gui.UIManager((self.screen_width, self.screen_height))

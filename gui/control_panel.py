@@ -163,12 +163,12 @@ class ControlPanel:
             # --- DIBUJAR el botn con la imagen que acabamos de establecer ---
             button.update(self.screen)
         
-        self.is_playing = self.engine.playing
+        self.is_playing = self.engine.is_playing()
 
 
     def _play(self):
         # Solo iniciar si no est reproduciendo ya
-        if not self.engine.playing: # Usar el estado del engine como fuente de verdad
+        if not self.engine.is_playing(): # Usar el estado del engine como fuente de verdad
             print("Accin: Iniciar Reproducción")
             self.engine.start()
             self.is_playing = True # Actualizar el estado local
@@ -176,7 +176,7 @@ class ControlPanel:
 
     def _pause(self):
         # Solo detener si est reproduciendo
-        if self.engine.playing: # Usar el estado del engine como fuente de verdad
+        if self.engine.is_playing(): # Usar el estado del engine como fuente de verdad
             print("Accin: Detener Reproducción")
             self.engine.stop()
             self.is_playing = False # Actualizar el estado local

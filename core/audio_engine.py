@@ -36,6 +36,12 @@ class AudioEngine:
             self.generate_events()
             self.absolute_position = 0
 
+    
+    def get_current_playback_time(self):
+        if self.total_duration > 0:
+            return (self.absolute_position % (self.total_duration * SAMPLE_RATE)) / SAMPLE_RATE
+        return 0.0
+
 
     def calculate_beat_duration(self):
         return 60 / self.bpm
@@ -61,6 +67,13 @@ class AudioEngine:
         return len(self.measures)
     
 
+    def get_measure_length(self, measure_idx):
+        measure = self.get_measure_info(measure_idx)
+        if measure:
+            return measure.get("length", 4)
+        return 4
+    
+
     def get_measure_info(self, measure_idx):
         if 0 <= measure_idx < len(self.measures):
             return self.measures[measure_idx]
@@ -81,6 +94,61 @@ class AudioEngine:
             return self.patterns[instrument][measure_idx][beat][subdiv_idx]
         return 0
     
+
+    def is_playing(self):
+        return self.playing
+
+    def get_total_duration(self):
+        return self.total_duration
+    
+    def get_bpm(self):
+        return self.bpm
+
+    def update_measure_structure(self, measure_idx: int, beats: int, subdivisions: int):
+        if beats <= 0 or subdivisions <= 0:
+            return
+
+        with self.lock:
+            if 0 <= measure_idx < len(self.measures):
+                self.measures[measure_idx]['length'] = beats
+                self.measures[measure_idx]['subdivisions'] = subdivisions
+
+                for inst in self.patterns:
+                    self.patterns[inst][measure_idx] = [
+                        [0] * subdivisions for _ in range(beats)
+                    ]
+
+                self.total_duration = self.calculate_total_duration()
+                self.generate_events()
+                self.absolute_position = 0
+
+    def repeat_measures(self, start_idx: int, end_idx: int, times: int):
+        if times <= 0:
+            return
+    
+        with self.lock:
+            if start_idx < 0 or end_idx >= len(self.measures):
+                return
+    
+            original_measures = self.measures[start_idx:end_idx+1]
+    
+            for _ in range(times):
+                insert_position = end_idx + 1
+    
+                for i, measure in enumerate(original_measures):
+                    self.measures.insert(insert_position + i, measure.copy())
+    
+                    for inst in self.patterns:
+                        pattern_copy = [
+                            beat[:] for beat in self.patterns[inst][start_idx + i]
+                        ]
+                        self.patterns[inst].insert(insert_position + i, pattern_copy)
+    
+            self.total_duration = self.calculate_total_duration()
+            self.generate_events()
+            self.absolute_position = 0
+
+
 
     def toggle_cell(self, instrument, measure_idx, beat, subdiv_idx):
         with self.lock:
@@ -243,13 +311,6 @@ class AudioEngine:
         buffer = (buffer * 32767).astype(np.int16)
     
         return (buffer.tobytes(), pyaudio.paContinue)
-
-        
-    
-    def get_current_playback_time(self):
-        if self.total_duration > 0:
-            return (self.absolute_position % (self.total_duration * SAMPLE_RATE)) / SAMPLE_RATE
-        return 0.0
         
         
     def export(self, filename):

@@ -44,10 +44,40 @@ class GridPanel:
 
         self._update_content_surface()
 
+    
+    def get_playhead_position(self):
+        total_duration = self.engine.get_total_duration()
+        if not self.engine.is_playing() or total_duration <= 0:
+            return None
+
+        current_time = self.engine.get_current_playback_time()
+        beat_duration = self.engine.calculate_beat_duration()
+
+        accumulated_time = 0.0
+
+        for measure_idx in range(self.engine.get_measure_count()):
+            beats = self.engine.get_measure_length(measure_idx)
+            measure_duration = beats * beat_duration
+
+            if current_time < accumulated_time + measure_duration:
+                time_inside = current_time - accumulated_time
+                measure_progress = time_inside / measure_duration
+                return {
+                    "measure_idx": measure_idx,
+                    "measure_progress": measure_progress,
+                    "time": current_time
+                }
+
+            accumulated_time += measure_duration
+
+        return None
+
+
+
 
     def draw_playback_line(self, surface):
-        total_duration = self.engine.total_duration
-        if total_duration <= 0 or not self.engine.playing:
+        total_duration = self.engine.get_total_duration()
+        if total_duration <= 0 or not self.engine.is_playing():
             return
 
         current_time = self.engine.get_current_playback_time()
@@ -56,8 +86,8 @@ class GridPanel:
         accumulated_time = 0
         line_x = 0
 
-        for measure_idx, measure in enumerate(self.engine.measures):
-            beats = measure.get("length", 4)
+        for measure_idx in range(self.engine.get_measure_count()):
+            beats = self.engine.get_measure_length(measure_idx)
             measure_duration = beats * beat_duration
 
             if current_time < accumulated_time + measure_duration:
@@ -76,7 +106,7 @@ class GridPanel:
         visible_line_x = line_x - self.scroll_x
         
         # Auto-scroll solo si el usuario no esta manipulando el scroll
-        if self.engine.playing and not self.user_scrolling:
+        if self.engine.is_playing() and not self.user_scrolling:
             scroll_margin = self.visible_area_rect.width * 0.5
             if visible_line_x > self.visible_area_rect.width - scroll_margin:
                 self.scroll_x = min(self.max_scroll_x, line_x - self.visible_area_rect.width + scroll_margin)
@@ -86,7 +116,7 @@ class GridPanel:
                 self._update_thumb_position()
 
         # Dibujar línea en la posición calculada
-        total_width = len(self.engine.measures) * self.measure_width
+        total_width = self.engine.get_measure_count() * self.measure_width
 
         if 0 <= line_x <= total_width:
             pygame.draw.line(
@@ -102,13 +132,14 @@ class GridPanel:
         #print(f"\n--- DEBUG: _draw_measure_content llamado para Compás {measure_idx + 1} en X base: {x_base} ---")
         y_start = self.header_height
 
-        if measure_idx >= len(self.engine.measures):
+        if measure_idx >= self.engine.get_measure_count():
             #print(f"DEBUG: _draw_measure_content: measure_idx {measure_idx} fuera de rango.")
             return
 
-        measure = self.engine.measures[measure_idx]
+        beats = self.engine.get_measure_info(measure_idx)
 
-        beats_per_measure = measure.get('length', 4)
+
+        beats_per_measure = beats.get('length', 4)
         #print(f"DEBUG: _draw_measure_content: Beats per measure: {beats_per_measure} para Compás {measure_idx + 1}")
 
         subdivisions_per_beat = self.engine.get_subdivisions(measure_idx)
@@ -150,8 +181,7 @@ class GridPanel:
     def _update_content_surface(self):
         # ... (código _update_content_surface, mantener debugs) ...
         #print("\n--- DEBUG: _update_content_surface llamado en GridPanel ---")
-        self.total_content_width = len(self.engine.measures) * self.measure_width
-        #print(f"DEBUG: Total measures: {len(self.engine.measures)}, total_content_width: {self.total_content_width}")
+        self.total_content_width = self.engine.get_measure_count() * self.measure_width        
 
         new_surface_width = max(self.visible_area_rect.width, self.total_content_width)
         new_surface_height = self.visible_area_rect.height
@@ -163,9 +193,8 @@ class GridPanel:
              self.content_surface = pygame.Surface((new_surface_width, new_surface_height), pygame.SRCALPHA)
 
         self.content_surface.fill((35, 35, 35, 255))
-
-        #print(f"DEBUG: Iniciando bucle de dibujo de compases. Número de compases en engine: {len(self.engine.measures)}")
-        for measure_idx in range (len(self.engine.measures)):
+        
+        for measure_idx in range (self.engine.get_measure_count()):
             x_pos = measure_idx * self.measure_width
             # El debug dentro de _draw_measure_content ahora nos dirá los detalles por compás
 
@@ -189,22 +218,11 @@ class GridPanel:
 
         # --- DEBUG: Inspeccionar estructura de patrones después de dibujar ---
         #print("\n--- DEBUG: Inspeccionando estructura de patrones después de _update_content_surface ---")
-        for measure_idx in range(len(self.engine.measures)):
+        for measure_idx in range(self.engine.get_measure_count()):
              #print(f"DEBUG: Estructura de patrón para Compás {measure_idx + 1}:")
-             if measure_idx < len(self.engine.measures):
-                  measure_length = self.engine.measures[measure_idx].get('length', 4)
-                  #print(f"  - Medida length (beats): {measure_length}")
-                  for inst_idx, inst in enumerate(self.engine.patterns.keys()):
-                       if measure_idx < len(self.engine.patterns[inst]):
-                            pattern_for_measure = self.engine.patterns[inst][measure_idx]
-                            num_beats_in_pattern = len(pattern_for_measure)
-                            subdivs_per_beat_in_pattern = len(pattern_for_measure[0]) if num_beats_in_pattern > 0 and len(pattern_for_measure[0]) > 0 else 0 # Ensuring pattern_for_measure[0] is not empty
-                            #print(f"    - Instrumento '{inst}': {num_beats_in_pattern} beats en patrón, {subdivs_per_beat_in_pattern} subdivs por beat en patrón.")
-                            # Opcional: imprimir un snippet del patrón si es pequeño
-                            # print(f"      Snippet: {pattern_for_measure[0][:5]}...") # Imprimir las primeras 5 subdivs del primer beat
-                       else:
-                           #print(f"    - Instrumento '{inst}': Patrón para Compás {measure_idx + 1} no encontrado.")
-                           pass
+             if measure_idx < self.engine.get_measure_count():
+                  measure_length = self.engine.get_measure_info(measure_idx).get('length', 4)
+                  #print(f"  - Medida length (beats): {measure_length}")                  
 
 
         #print("--- DEBUG: Inspección de patrones terminada ---")
@@ -268,8 +286,8 @@ class GridPanel:
                                               click_pos_in_visible_area[1])
                 print(f"DEBUG: Clic detectado en área de cabecera en pos: {event.pos}. Traducido a content_surface: {click_pos_in_content_surface}")
                 header_height = self.header_height  
-                print(f"DEBUG: Verificando colisión con cabeceras. Nmero de measures: {len(self.engine.measures)}")
-                for measure_idx in range(len(self.engine.measures)):
+                print(f"DEBUG: Verificando colisión con cabeceras. Nmero de measures: {self.engine.get_measure_count()}")
+                for measure_idx in range(self.engine.get_measure_count()):
                     header_rect_content = pygame.Rect(measure_idx * self.measure_width, 0, self.measure_width, self.header_height)
                     if header_rect_content.collidepoint(click_pos_in_content_surface):
                         print(f"DEBUG: Colisión detectada con cabecera de Compás {measure_idx + 1}")
@@ -299,18 +317,19 @@ class GridPanel:
 
                 measure_idx = int(click_pos_in_content_surface[0] // self.measure_width)
 
-                if 0 <= measure_idx < len(self.engine.measures):
+                if 0 <= measure_idx < self.engine.get_measure_count():
                     print(f"DEBUG: Clic en Compás {measure_idx + 1}")
 
                     click_y_in_grid_area = click_pos_in_content_surface[1] - self.header_height
-                    num_instruments = len(self.engine.patterns.keys())
+                    num_instruments = len(self.engine.get_instruments())
                     drawable_grid_area_height = max(0, self.current_content_draw_height - self.header_height)
                     inst_row_height = drawable_grid_area_height / num_instruments if num_instruments > 0 else 40
 
                     inst_idx = int(click_y_in_grid_area // inst_row_height)
 
-                    measure = self.engine.measures[measure_idx]
-                    beats_per_measure = measure.get('length', 4)
+                    beats = self.engine.get_measure_info(measure_idx)
+
+                    beats_per_measure = beats.get('length', 4)
                     
                     # --- Lógica de cálculo de Subdivisions por beat para mapeo de clic ---
                     subdivisions_per_beat = self.engine.get_subdivisions(measure_idx)
