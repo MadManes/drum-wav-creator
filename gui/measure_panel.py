@@ -281,6 +281,11 @@ class MeasurePanel:
             return
     
         self.engine.add_measure(beats, subdivs)
+        
+        ### LINEA DE DEBUG MANUAL
+        #self.engine.set_measure_repeat(0, 4)
+        ###
+
         self.gui.grid_panel._update_content_surface()
 
     # Método interno para aplicar beats/subdivs a compases seleccionados (llamado por el botón Aceptar)

@@ -42,15 +42,13 @@ class DrumGUI:
                 self.assets[name] = pygame.image.load(img_full_path).convert_alpha()
             except pygame.error as e:
                 print(f'Error al cargar la imagen "{name}": {e}')
-                # En un proyecto real, aquí no saldrías, manejarías el error de otra forma.
-                # sys.exit()
+                
                 return None
 
         return self.assets.get(name) # Usar .get para devolver None si la imagen no se cargó
 
 
-    def create_panels(self):
-        print("\nCREADO PANELES DESDE GUIRUN")        
+    def create_panels(self):        
 
         ## TOOLBAR        
         self.toolbar = Toolbar(0, 0, self.screen, self)
@@ -84,8 +82,7 @@ class DrumGUI:
         self.panels.append(self.footer_panel)
 
     def run(self):
-        running = True
-        print("esto se ejecuta una vez")
+        running = True        
         self.create_panels() # Crea todos los paneles al inicio        
 
         # --- Añadir la medida inicial aquí, después de crear los paneles y enlazar grid_panel al engine ---
@@ -113,13 +110,12 @@ class DrumGUI:
                 if event.type == pygame_gui.UI_TEXT_ENTRY_CHANGED:
                     # Verificar si el evento proviene del input de beats usando su object_id
                     if event.ui_element.get_object_ids()[-1] == '#beats_input': # Comparamos con el último object_id
-                         self.input_values['beats'] = event.text # Capturar el nuevo texto del input
-                         print(f"DEBUG: beats_input changed: {self.input_values['beats']}") # Debug para verificar
+                        self.input_values['beats'] = event.text # Capturar el nuevo texto del input
+                      
 
                     # Verificar si el evento proviene del input de subdivisions usando su object_id
                     elif event.ui_element.get_object_ids()[-1] == '#subdiv_input': # Comparamos con el último object_id
-                         self.input_values['subdivisions'] = event.text # Capturar el nuevo texto del input
-                         print(f"DEBUG: subdiv_input changed: {self.input_values['subdivisions']}") # Debug para verificar
+                        self.input_values['subdivisions'] = event.text # Capturar el nuevo texto del input                      
 
                 # 3. Manejar eventos de Pygame "puros" o eventos para tus widgets personalizados
                 # Pasamos el evento a cada panel para que maneje sus propios elementos no-pygame_gui
@@ -134,8 +130,7 @@ class DrumGUI:
             # Si otros paneles tuvieran lógica de update manual (no de dibujado), se llamarían aquí.
 
             # --- Fase de Dibujado ---
-            # Esta sección redibuja la pantalla en cada frame
-            #print("--- DEBUG: Iniciando sección de Dibujado en gui.run ---")
+            # Esta sección redibuja la pantalla en cada frame            
             self.screen.fill((60, 60, 60)) # Limpiar la pantalla con un color de fondo
 
             # --- DIBUJAR CADA PANEL LLAMANDO A draw() O update() SI draw() NO EXISTE ---
@@ -158,9 +153,6 @@ class DrumGUI:
 
             # 3. Actualizar la pantalla completa de Pygame para mostrar todo lo dibujado
             pygame.display.update()
-
-            #print("--- DEBUG: Sección de Dibujado en gui.run terminada ---")
-
 
         # Al salir del bucle, limpia Pygame
         pygame.quit()

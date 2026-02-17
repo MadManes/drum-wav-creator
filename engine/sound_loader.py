@@ -50,19 +50,3 @@ def load_instruments():
 
     return sounds
 
-#def load_instruments():
-#    sounds = {
-#        'crash 1': load_sound('assets/sounds/crash_1.wav', 0.5),
-#        'crash 2': load_sound('assets/sounds/crash_2.wav', 0.7),
-#        'cowbell': load_sound('assets/sounds/cowbell.wav', 0.8),
-#        'Op. hihat': load_sound('assets/sounds/op_hihat.wav', 0.5),
-#        'H. tom': load_sound('assets/sounds/h_tom.wav', 1.4),
-#        'snare': load_sound('assets/sounds/snare.wav', 1.3),
-#        'F. tom': load_sound('assets/sounds/f_tom.wav', 1.5),
-#        'kick': load_sound('assets/sounds/kick.wav', 1.5),
-#        'F. hihat': load_sound('assets/sounds/f_hihat.wav', 0.8)
-#    }
-#
-#    print("\n CARGADO INSTRUMENTOS")
-#
-#    return sounds

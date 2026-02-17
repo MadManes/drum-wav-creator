@@ -5,6 +5,15 @@ import os
 import numpy as np
 from core.constants import SAMPLE_RATE, CHANNELS, BUFFER_SIZE, DEFAULT_BPM
 
+from dataclasses import dataclass
+
+@dataclass
+class AudioEvent:
+    time: float
+    samples: np.ndarray
+    duration: float
+    instrument: str
+
 # Constantes de audio
 FORMAT = pyaudio.paInt16
 
@@ -54,7 +63,8 @@ class AudioEngine:
 
         for measure_info in self.measures:
             beats_per_measure = measure_info.get('length', 4)
-            total_duration_seconds += self.calculate_beat_duration() * beats_per_measure
+            repeat = measure_info.get('repeat', 1)
+            total_duration_seconds += self.calculate_beat_duration() * beats_per_measure * repeat
 
         return total_duration_seconds
     
@@ -121,6 +131,7 @@ class AudioEngine:
                 self.total_duration = self.calculate_total_duration()
                 self.generate_events()
                 self.absolute_position = 0
+
 
     def repeat_measures(self, start_idx: int, end_idx: int, times: int):
         if times <= 0:
@@ -196,7 +207,8 @@ class AudioEngine:
         with self.lock:
             self.measures.append({
                 'length': beats,
-                'subdivisions': subdivisions
+                'subdivisions': subdivisions,
+                'repeat': 1
             })
 
             for inst in self.patterns:
@@ -222,6 +234,17 @@ class AudioEngine:
             self.generate_events()
             self.absolute_position = 0
     
+    def set_measure_repeat(self, measure_idx: int, repeat: int):
+        if repeat < 1:
+            repeat = 1
+    
+        with self.lock:
+            if 0 <= measure_idx < len(self.measures):
+                self.measures[measure_idx]['repeat'] = repeat
+                self.total_duration = self.calculate_total_duration()
+                self.generate_events()
+                self.absolute_position = 0
+
 
     # Genera la lista de eventos de audio basados en el patrn actual
     def generate_events(self):
@@ -232,29 +255,40 @@ class AudioEngine:
         for measure_idx, measure_info in enumerate(self.measures):
             current_beats = measure_info.get('length', 4)
             current_subdiv = measure_info.get('subdivisions', 4)
+            repeat = measure_info.get('repeat', 1)
+
             measure_duration = current_beats * beat_duration
 
-            for inst in self.patterns:
-                if inst in self.patterns and measure_idx < len(self.patterns[inst]):
-                    pattern_for_measure = self.patterns[inst][measure_idx]
-                    pattern_beats = len(pattern_for_measure)
-                    pattern_subdivs_per_beat = 0
-                    if pattern_beats > 0 and len(pattern_for_measure[0]) > 0:
-                        pattern_subdivs_per_beat = len(pattern_for_measure[0])
-                    if pattern_beats == current_beats and pattern_subdivs_per_beat == current_subdiv:
-                        for beat_idx in range(current_beats):
-                            for subdiv_idx in range(current_subdiv):
-                                if pattern_for_measure[beat_idx][subdiv_idx] == 1:
-                                    time = accumulated_time + (beat_idx * beat_duration) + (subdiv_idx / current_subdiv * beat_duration)
-                                    event_data = {
-                                        'time': time,
-                                        'sound': self.sounds[inst], # sound y samples suelen ser lo mismo si cargas samples completos
-                                        'duration': len(self.sounds[inst]) / SAMPLE_RATE,
-                                        'samples': self.sounds[inst], # Contiene los datos de audio (ndarray)
-                                        'instruments': inst
-                                    }
-                                    self.events.append(event_data)
-            accumulated_time += measure_duration
+            for r in range(repeat):
+
+                for inst in self.patterns:
+                    if inst in self.patterns and measure_idx < len(self.patterns[inst]):
+                        pattern_for_measure = self.patterns[inst][measure_idx]
+                        pattern_beats = len(pattern_for_measure)
+                        pattern_subdivs_per_beat = 0
+
+                        if pattern_beats > 0 and len(pattern_for_measure[0]) > 0:
+                            pattern_subdivs_per_beat = len(pattern_for_measure[0])
+                        if pattern_beats == current_beats and pattern_subdivs_per_beat == current_subdiv:
+                            for beat_idx in range(current_beats):
+                                for subdiv_idx in range(current_subdiv):
+                                    if pattern_for_measure[beat_idx][subdiv_idx] == 1:
+                                        time = (
+                                            accumulated_time + 
+                                            (beat_idx * beat_duration) + 
+                                            (subdiv_idx / current_subdiv * beat_duration)
+                                        )
+
+                                        event = AudioEvent(
+                                            time=time,
+                                            samples=self.sounds[inst],
+                                            duration=len(self.sounds[inst]) / SAMPLE_RATE,
+                                            instrument=inst
+                                        )
+
+                                        self.events.append(event)
+
+                accumulated_time += measure_duration
 
     def callback(self, in_data, frame_count, time_info, status):
         buffer = np.zeros((frame_count, CHANNELS), dtype=np.float32)
@@ -276,9 +310,9 @@ class AudioEngine:
                 buffer_end_time = current_time + frame_count / SAMPLE_RATE
     
                 for event in events:
-                    start_time = event["time"]
-                    event_samples = event["samples"]
-                    event_duration = event["duration"]
+                    start_time = event.time
+                    event_samples = event.samples
+                    event_duration = event.duration
     
                     if start_time >= buffer_end_time:
                         continue
@@ -319,8 +353,8 @@ class AudioEngine:
         export_buffer = np.zeros((total_frames, CHANNELS), dtype=np.float32)
 
         for event in self.events:
-            start_frame = int(event['time'] * SAMPLE_RATE)
-            end_frame = start_frame + len(event['samples'])
+            start_frame = int(event.time * SAMPLE_RATE)
+            end_frame = start_frame + len(event.samples)
 
             if start_frame >= total_frames:
                 continue
@@ -328,7 +362,7 @@ class AudioEngine:
             end_frame = min(end_frame, total_frames)
             sample_slice = slice(0, end_frame - start_frame)
 
-            export_buffer[start_frame:end_frame] += event['samples'][sample_slice]
+            export_buffer[start_frame:end_frame] += event.samples[sample_slice]
 
         export_buffer = np.clip(export_buffer, -1, 1)
         export_buffer = (export_buffer * 32767).astype(np.int16)

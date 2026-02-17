@@ -31,7 +31,7 @@ class ControlPanel:
         # Lista para todos los botones interactivos (para manejar eventos)
         self.buttons = []
 
-        # --- Estado de reproduccin ---
+        # --- Estado de reproducción ---
         # La aplicacin comienza por defecto en pausa
         self.is_playing = False # True si est reproduciendo, False si est pausado/detenido
 
@@ -168,23 +168,19 @@ class ControlPanel:
 
     def _play(self):
         # Solo iniciar si no est reproduciendo ya
-        if not self.engine.is_playing(): # Usar el estado del engine como fuente de verdad
-            print("Accin: Iniciar Reproducción")
+        if not self.engine.is_playing(): # Usar el estado del engine como fuente de verdad            
             self.engine.start()
             self.is_playing = True # Actualizar el estado local
 
 
     def _pause(self):
         # Solo detener si est reproduciendo
-        if self.engine.is_playing(): # Usar el estado del engine como fuente de verdad
-            print("Accin: Detener Reproducción")
+        if self.engine.is_playing(): # Usar el estado del engine como fuente de verdad            
             self.engine.stop()
             self.is_playing = False # Actualizar el estado local
 
 
-    def _download_wav(self):            
-        print("Acción: Descargar WAV")
-        
+    def _download_wav(self):
         os.makedirs("exports", exist_ok=True)
 
         filename = os.path.join("exports", "export.wav")
@@ -196,88 +192,3 @@ class ControlPanel:
             print(f"Error al exportar WAV: {e}")
 
 
-'''import pygame
-from .button import Button
-
-class ControlPanel:
-    def __init__(self,x, y, screen, engine, gui):
-        self.x = x
-        self.y = y
-        self.screen = screen
-        self.engine = engine
-        self.gui = gui
-        self.image = self.gui.load_image("cp_background")        
-        self.width = screen.get_width() * .25
-        self.height = screen.get_height() * .18
-        
-        self.image = pygame.transform.scale(self.image, (self.width, self.height)) ## IDEM RESPONSIVE!!!
-        self.rect = self.image.get_rect(topleft=(self.x, self.y))
-        self.buttons = []
-
-        # --- Estado de reproduccin ---
-        # La aplicacin comienza por defecto en pausa
-        self.is_playing = False # True si est reproduciendo, False si est pausado/detenido
-
-        self._create_buttons()
-
-    def _create_buttons(self):
-
-        # BOTON PLAY
-        self.play_normal = self.gui.load_image("play_off")
-        self.play_hover = self.gui.load_image("play_on")
-        ## VER POS X e Y CON EL REESCALADO Y EL RESPONSIVE
-        self.play_button = Button(self.x + 5, self.y + 5, 
-                             ((self.width - 20) / 3), (self.height / 2) - 20, 
-                             self.play_normal, self.play_hover, action=self._play)
-        self.buttons.append(self.play_button)
-
-
-        # BOTON PAUSE
-        self.pause_normal = self.gui.load_image("pause_off")
-        self.pause_hover = self.gui.load_image("pause_on")
-        ## VER POS X e Y CON EL REESCALADO Y EL RESPONSIVE
-        self.pause_button = Button(self.x + ((self.width - 20) / 3) + 6, self.y + 5, 
-                              ((self.width - 20) / 3), (self.height / 2) - 20, 
-                              self.pause_normal, self.pause_hover, action=self._pause)
-        self.buttons.append(self.pause_button)
-
-
-        # BPM PANEL: ESTO DEBERIA HACERLO EN UN MODULO APARTE?
-        # Porque por ahora no tiene botones, solo imprimo en pantalla el panel
-        self.bpm_panel = self.gui.load_image("bpm_panel")
-        self.bpm_panel_button = Button(self.x + 5, self.y + (self.height / 2) - 13, 
-                                  self.play_button.width + self.pause_button.width, (self.height / 2) + 6, 
-                                  self.bpm_panel, None, action=self._download_wav)  ## CAMBIAR Y ADAPTARLO A PANEL !!
-        self.buttons.append(self.bpm_panel_button)
-
-
-        # BOTON DOWNLOAD WAV
-        self.download_wav = self.gui.load_image("download_wav")        
-        ## VER POS X e Y CON EL REESCALADO Y EL RESPONSIVE
-        self.download_wav_button = Button(self.x + 2*(((self.width - 20) / 3)) + 6, self.y + (self.height / 2) - 13, 
-                                     ((self.width - 20) / 3), self.bpm_panel_button.height,
-                                     self.download_wav, None, action=self._download_wav)
-        self.buttons.append(self.download_wav_button)        
-
-    
-    def handle_event(self, event):
-        for button in self.buttons:
-            button.handle_event(event)
-
-
-    def update(self):
-        # DIBUJO CONTROL PANEL EN PANTALLA
-        self.screen.blit(self.image, self.rect)
-        # DIBUJO BOTONES DE CONTROL PANEL
-        for button in self.buttons:
-            button.update(self.screen)
-
-    def _play(self):
-        self.engine.start()
-        
-
-    def _pause(self):
-        self.engine.stop()
-
-    def _download_wav(self):
-        pass'''

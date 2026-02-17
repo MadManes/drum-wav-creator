@@ -20,11 +20,10 @@ class Toolbar():
         self.menu_image = self.gui.load_image("toolbar_menu") # Imagen para el modo men
 
         # Verificar si las imgenes se cargaron correctamente antes de usarlas
-        if not self.original_image:
-             print("ADVERTENCIA: No se pudo cargar la imagen 'toolbar_2'. Usando una superficie genrica.")
-             # Crear una superficie genrica si la imagen falla
-             self.original_image = pygame.Surface((screen.get_width(), 50)) # Altura de ejemplo
-             self.original_image.fill((100, 100, 100)) # Color de ejemplo
+        if not self.original_image:             
+            # Crear una superficie genrica si la imagen falla
+            self.original_image = pygame.Surface((screen.get_width(), 50)) # Altura de ejemplo
+            self.original_image.fill((100, 100, 100)) # Color de ejemplo
 
         # Usar la altura de la imagen original como base
         self.width = screen.get_width()
@@ -36,9 +35,8 @@ class Toolbar():
         if self.menu_image: # Asegurarse de que la imagen del men se carg correctamente
              self.menu_image = pygame.transform.scale(self.menu_image, (int(self.width), int(self.height))) # Asegurar int
         else:
-             # Si la imagen del men falla, usar la original para evitar errores
-             print("ADVERTENCIA: No se pudo cargar la imagen 'toolbar_menu_bg'. Usando la imagen original.")
-             self.menu_image = self.original_image
+            # Si la imagen del men falla, usar la original para evitar errores            
+            self.menu_image = self.original_image
 
         # --- Imagen de fondo actual de la toolbar ---
         self.current_bg_image = self.original_image
@@ -183,8 +181,7 @@ class Toolbar():
 
 
     # --- NUEVO MÉTODO para alternar entre los modos de la toolbar ---
-    def _toggle_menu_mode(self):
-        print("DEBUG: Alternando modo de toolbar")
+    def _toggle_menu_mode(self):        
         self.menu_mode_active = not self.menu_mode_active
         # Cuando el modo cambia, debemos actualizar la visibilidad de los botones
         self._update_button_visibility()
@@ -207,21 +204,11 @@ class Toolbar():
 
     def handle_event(self, event):
         # Manejar eventos de la GUI
-        # --- MODIFICACIN AQU: Pasar eventos solo a los botones del modo activo ---
+        # --- MODIFICACIÓN: Pasar eventos solo a los botones del modo activo ---
         if not self.menu_mode_active: # Si estamos en modo control
             # Pasar eventos solo a los botones de control personalizados
             for button in self.control_buttons:
-                button.handle_event(event)
-        else: # Si estamos en modo men
-            # Los eventos para los botones de pygame_gui se manejan automticamente por self.manager.process_events(event) en gui.py
-            # Si quieres manejar eventos de botones de pygame_gui especficos en la toolbar, hazlo aqu:
-            # if event.type == pygame_gui.UI_BUTTON_PRESSED:
-            #     if event.ui_element in self.menu_buttons:
-            #         if event.ui_element.get_text() == "File":
-            #             print("Clic en File")
-            #             # Lgica del men File
-            #         # etc.
-            pass # No hacemos nada aqu para los botones de men de pygame_gui
+                button.handle_event(event)        
 
         # --- MODIFICACIN AQU: Detectar si el ratn sale de la toolbar en MOUSEMOTION ---
         # Esto debe ocurrir independientemente del modo actual, para poder volver al modo control
@@ -229,46 +216,33 @@ class Toolbar():
         if event.type == pygame.MOUSEMOTION:
             mouse_pos = event.pos
             self.is_toolbar_hovered = self.rect.collidepoint(mouse_pos)
-            # Si el modo men est activo Y el ratn ya NO colisiona con la toolbar
-            if self.menu_mode_active and not self.rect.collidepoint(mouse_pos):
-                print("DEBUG: Raton sali de la toolbar. Revertiendo modo menu.")
+            # Si el modo menú está activo y el mouse ya NO colisiona con la toolbar
+            if self.menu_mode_active and not self.rect.collidepoint(mouse_pos):                
                 # Alternar el modo de nuevo para volver al original
                 self.menu_mode_active = False
                 self._update_button_visibility() # Actualizar visibilidad de los botones
         
         # Manejar eventos de la GUI
-        # Pasar eventos solo a los botones del modo activo (control o men)
+        # Pasar eventos solo a los botones del modo activo (control o menú)
         if not self.menu_mode_active: # Si estamos en modo control
             # Pasar eventos solo a los botones de control personalizados
             for button in self.control_buttons:
                 button.handle_event(event)
-        else: # Si estamos en modo men
-            # Los eventos para los botones de pygame_gui se manejan automticamente por self.manager.process_events(event) en gui.py
-            # Si quieres manejar eventos de botones de pygame_gui especficos en la toolbar, hazlo aquí:
-            # if event.type == pygame_gui.UI_BUTTON_PRESSED:
-            #     if event.ui_element in self.menu_buttons:
-            #         if event.ui_element.get_text() == "File":
-            #             print("Clic en File")
-            #             # Lgica del men File
-            #         # etc.
-            pass # No hacemos nada aquí para los botones de men de pygame_gui
-
-
 
     def update(self):
-        # --- MODIFICACIN CLAVE: Dibujar la imagen de fondo de la toolbar segn hover o modo activo ---
+        # Dibujar la imagen de fondo de la toolbar según hover o modo activo ---
         if self.menu_mode_active:             
             self.current_bg_image = self.menu_image        
         else:
-            # Si NO est en modo menu
+            # Si NO está en modo menu
             self.current_bg_image = self.original_image
 
-        # DIBUJO TOOLBAR EN PANTALLA con la imagen de fondo decidida
+        # DIBUJO TOOLBAR EN PANTALLA 
         self.screen.blit(self.current_bg_image, self.rect)
 
 
         # DIBUJO BOTONES DEL MODO ACTIVO (solo tus Custom Buttons de control)
-        # --- MODIFICACIN CLAVE AQU: Dibujar solo los botones de control si el modo men NO est activo ---
+        # Dibujar solo los botones de control si el modo menú NO est activo ---
         if not self.menu_mode_active:
             for button in self.control_buttons:
                 # --- Lógica para que los custom Buttons muestren su imagen de hover ---
@@ -283,23 +257,12 @@ class Toolbar():
         # Los botones de pygame_gui (self.menu_buttons) se dibujan automticamente por self.manager.draw_ui(self.screen) en gui.py
 
 
-    def _close_app(self):
-        print("\nCERRANDO EL PROGRAMA DESDE LA TOOLBAR")
+    def _close_app(self):        
         pygame.quit()
         sys.exit()
 
-    def _minimize_window(self):
-        print("\nMINIMIZANDO LA VENTANA DESDE LA TOOLBAR")
+    def _minimize_window(self):        
         pygame.display.iconify()
 
-    # Define mtodos de accin para los botones del men de pygame_gui aquí si quieres
-    # def _file_action(self):
-    #     print("Accin de men: File")
-    #     pass
-    # def _edit_action(self):
-    #     print("Accin de men: Edit")
-    #     pass
-    # def _help_action(self):
-    #     print("Accin de men: Help")
-    #     pass
+    
 

@@ -11,7 +11,7 @@ class Button:
             self.normal_image_scaled = pygame.transform.scale(normal_image, (self.width, self.height))
         else:
             # Si la imagen normal no existe, crear una superficie vaca o manejar el error
-            print(f"ADVERTENCIA: Imagen normal no proporcionada para botn en ({x}, {y})")
+            print(f"ADVERTENCIA: Imagen normal no proporcionada para botón en ({x}, {y})")
             self.normal_image_scaled = pygame.Surface((self.width, self.height), pygame.SRCALPHA) # Superficie transparente
 
         if hover_image:
