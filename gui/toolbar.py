@@ -184,7 +184,7 @@ class Toolbar():
     def _toggle_menu_mode(self):        
         self.menu_mode_active = not self.menu_mode_active
         # Cuando el modo cambia, debemos actualizar la visibilidad de los botones
-        self._update_button_visibility()
+        self._update_button_visibility()        
 
 
     # --- NUEVO MÉTODO para actualizar la visibilidad de los botones ---
@@ -201,8 +201,43 @@ class Toolbar():
             for button in self.menu_buttons:
                 button.visible = 0 # 0 para ocultar
 
+    
+    def _open_file_menu(self):
+
+        # Volver toolbar a modo titulo
+        self.menu_mode_active = False
+        self._update_button_visibility()
+    
+        from .popups import SmallMenuPopup
+    
+        popup = SmallMenuPopup(self.gui)
+        self.gui.popup_manager.open_popup(popup)
+
+
+    def _open_help_popup(self):
+
+        self.menu_mode_active = False
+        self._update_button_visibility()
+
+        from .popups import LargeHelpPopup
+
+        popup = LargeHelpPopup(self.gui)
+        self.gui.popup_manager.open_popup(popup)
+
+
 
     def handle_event(self, event):
+        if event.type == pygame.USEREVENT:
+            if event.user_type == pygame_gui.UI_BUTTON_PRESSED:
+                if event.ui_element in self.menu_buttons:
+                
+                    button_text = event.ui_element.text
+
+                    if button_text == "File":
+                        self._open_file_menu()
+
+                    elif button_text == "Help":
+                        self._open_help_popup()
         # Manejar eventos de la GUI
         # --- MODIFICACIÓN: Pasar eventos solo a los botones del modo activo ---
         if not self.menu_mode_active: # Si estamos en modo control

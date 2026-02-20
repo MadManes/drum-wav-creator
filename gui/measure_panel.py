@@ -152,18 +152,38 @@ class MeasurePanel:
             #object_id=pygame_gui.core.ObjectID(class_id='@MeasurePanel', object_id='#accept_button') # Opcional: asignar un object_id
         )
 
-        # Botón ADD Measure
-        add_button_rect = pygame.Rect(self.width - 100, self.height // 2 - 45, 90, 90)
-        self.add_measure_button = pygame_gui.elements.UIButton(
-            relative_rect=add_button_rect,
-            text="ADD",
+        # Botones ADD Measure
+        #add_button_rect = pygame.Rect(self.width - 100, self.height // 2 - 45, 90, 90)
+        button_size = 80
+        button_y = self.height // 2 - 45        
+
+        # Add First
+        self.add_first_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(self.width - 270, button_y, button_size, 90),
+            text="+ First",
             manager=self.manager,
-            container=self.panel_container,
-            #object_id=pygame_gui.core.ObjectID(class_id='@MeasurePanel', object_id='#add_button') # Opcional: asignar un object_id
+            container=self.panel_container
+        )       
+
+        # Add After
+        self.add_after_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(self.width - 180, button_y, button_size, 90),
+            text="+ After",
+            manager=self.manager,
+            container=self.panel_container
+        )       
+
+        # Add Last
+        self.add_last_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(self.width - 90, button_y, button_size, 90),
+            text="+ Last",
+            manager=self.manager,
+            container=self.panel_container
         )
 
+
         # Botón DEL Measure
-        del_button_rect = pygame.Rect(self.width - 200, self.height // 2 - 45, 90, 90)
+        del_button_rect = pygame.Rect(self.width - 360, self.height // 2 - 45, 90, 90)
         self.del_measure_button = pygame_gui.elements.UIButton(
             relative_rect=del_button_rect,
             text="DEL",
@@ -172,12 +192,25 @@ class MeasurePanel:
             #object_id=pygame_gui.core.ObjectID(class_id='@MeasurePanel', object_id='#del_button') # Opcional: asignar un object_id
         )
 
+        self.copy_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(self.width - 450, button_y, 80, 90),
+            text="COPY",
+            manager=self.manager,
+            container=self.panel_container
+        )
+
+        self.copy_button.disable()
+
+        self.copied_measure_index = None
+        self.waiting_for_paste = False
+
 
     def _update_info_panel(self):
         selected = self.gui.grid_panel.selected_measures_indices
         if not selected:
             self.info_panel.hide()
             self.repeat_panel.hide()
+            self.copy_button.disable()
             return
             
         self.info_panel.show()
@@ -211,6 +244,12 @@ class MeasurePanel:
         self.repeat_panel.show()
         self._update_repeat_panel_status(is_consecutive)
 
+        # Habilitar COPY solo si hay un compás seleccionado
+        if len(selected) == 1:
+            self.copy_button.enable()
+        else:
+            self.copy_button.disable()
+
     def _update_repeat_panel_status(self, is_consecutive):
         if not is_consecutive:
             self.repeat_status_label.set_text("Selección no continua!\nSelecciona un bloque de compases contiguos")
@@ -223,12 +262,20 @@ class MeasurePanel:
     def handle_event(self, event):        
         # Manejar eventos de la GUI (botones, inputs)
         if event.type == pygame_gui.UI_BUTTON_PRESSED:
-            if event.ui_element == self.add_measure_button:
-                self._add_measure()
+            if event.ui_element == self.add_first_button:
+                self._add_measure_first()
+            if event.ui_element == self.add_after_button:
+                self._add_measure_after()
+            if event.ui_element == self.add_last_button:
+                self._add_measure_last()
+
             if event.ui_element == self.accept_button:
                 self._apply_beats_subdivs_to_selected()
             if event.ui_element == self.del_measure_button:
                  self._delete_selected_measures() # Llamar al mtodo interno para eliminar
+
+            if event.ui_element == self.copy_button:
+                self._handle_copy()
 
         if event.type == pygame_gui.UI_BUTTON_PRESSED:
             if event.ui_element == self.repeat_apply_btn:
@@ -236,6 +283,58 @@ class MeasurePanel:
             if event.ui_element == self.repeat_cancel_btn:
                 self.gui.grid_panel.selected_measures_indices = []
                 self._update_info_panel()
+
+    
+    def _add_measure_first(self):
+        beats, subdivs = self._get_beats_subdivs()
+        self.engine.insert_measure(0, beats, subdivs)
+        self.gui.grid_panel._update_content_surface()
+
+    def _add_measure_last(self):
+        beats, subdivs = self._get_beats_subdivs()
+        self.engine.insert_measure(len(self.engine.measures), beats, subdivs)
+        self.gui.grid_panel._update_content_surface()
+
+    def _add_measure_after(self):
+        selected = self.gui.grid_panel.selected_measures_indices
+
+        if not selected:
+            return
+
+        beats, subdivs = self._get_beats_subdivs()
+
+        insert_index = max(selected) + 1
+
+        self.engine.insert_measure(insert_index, beats, subdivs)
+        self.gui.grid_panel.selected_measures_indices = []
+        self.gui.grid_panel._update_content_surface()
+
+    def _handle_copy(self):
+        selected = self.gui.grid_panel.selected_measures_indices
+
+        if len(selected) != 1:
+            return
+
+        self.copied_measure_index = selected[0]
+        self.waiting_for_paste = True
+
+        self.gui.grid_panel._update_content_surface()
+
+        print("Modo pegar activado. Click en un compás destino.")
+
+
+    def _get_beats_subdivs(self):
+        beats_text = self.beats_input.get_text().strip()
+        subdiv_text = self.subdiv_input.get_text().strip()
+
+        try:
+            beats = int(beats_text) if beats_text else 4
+            subdivs = int(subdiv_text) if subdiv_text else 4
+        except ValueError:
+            return 4, 4
+
+        return beats, subdivs
+
 
 
     def _handle_repeat_action(self):
@@ -268,25 +367,7 @@ class MeasurePanel:
 
     def update(self):
         self._update_info_panel()
-
-    # Método interno para añadir una medida (llama al engine)
-    def _add_measure(self):
-        beats_text = self.beats_input.get_text().strip()
-        subdiv_text = self.subdiv_input.get_text().strip()
     
-        try:
-            beats = int(beats_text) if beats_text else 4
-            subdivs = int(subdiv_text) if subdiv_text else 4
-        except ValueError:
-            return
-    
-        self.engine.add_measure(beats, subdivs)
-        
-        ### LINEA DE DEBUG MANUAL
-        #self.engine.set_measure_repeat(0, 4)
-        ###
-
-        self.gui.grid_panel._update_content_surface()
 
     # Método interno para aplicar beats/subdivs a compases seleccionados (llamado por el botón Aceptar)
     def _apply_beats_subdivs_to_selected(self):

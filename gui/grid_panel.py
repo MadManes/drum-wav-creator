@@ -10,6 +10,8 @@ class GridPanel:
         self.manager = manager
         self.gui = gui
 
+        self.copy_highlight_color = (0, 200, 0)
+
         self.playback_line_color = (0, 200, 200)  # Turquesa
         self.playback_line_thickness = 2
         self.last_playback_position = 0
@@ -189,6 +191,8 @@ class GridPanel:
         self.content_surface.fill((35, 35, 35, 255))
 
     def _apply_repeat_input(self):
+        if self.editing_repeat is None:
+            return
         try:
             value = int(self.repeat_input_text)
         except:
@@ -275,9 +279,6 @@ class GridPanel:
 
 
     def _draw_measure_selection(self, measure_idx, x_pos):
-        if measure_idx not in self.selected_measures_indices:
-            return
-
         selection_rect = pygame.Rect(
             x_pos,
             0,
@@ -285,7 +286,16 @@ class GridPanel:
             self.visible_area_rect.height
         )
 
-        pygame.draw.rect(self.content_surface, (255, 0, 0), selection_rect, 3)
+        # Si es el compás copiado  verde
+        if hasattr(self.gui.measure_panel, "copied_measure_index"):
+            if measure_idx == self.gui.measure_panel.copied_measure_index:
+                pygame.draw.rect(self.content_surface, self.copy_highlight_color, selection_rect, 3)
+                return
+
+        # Si está seleccionado normalmente  rojo
+        if measure_idx in self.selected_measures_indices:
+            pygame.draw.rect(self.content_surface, (255, 0, 0), selection_rect, 3)
+
 
     def _update_scroll_limits(self):
         self.max_scroll_x = max(
@@ -302,6 +312,11 @@ class GridPanel:
         self._ensure_surface_size()
         self._draw_all_measures()
         self._update_scroll_limits()
+
+    
+    def clear_selection(self):
+        self.selected_measures_indices = []
+        self._update_content_surface()
 
 
     def draw(self, surface):        
@@ -401,7 +416,8 @@ class GridPanel:
 
             
 
-            # --- Lógica de SELECCIÓN de compás (clic en cabecera) ---
+            # --- Lógica de SELECCIÓN de compás (clic en cabecera) ---            
+
             if self.visible_area_rect.collidepoint(event.pos) and \
                event.pos[1] < self.visible_area_rect.y + self.header_height:
                                 
@@ -413,7 +429,21 @@ class GridPanel:
                 
                 for measure_idx in range(self.engine.get_measure_count()):
                     header_rect_content = pygame.Rect(measure_idx * self.measure_width, 0, self.measure_width, self.header_height)
-                    if header_rect_content.collidepoint(click_pos_in_content_surface):                        
+                    if header_rect_content.collidepoint(click_pos_in_content_surface):
+                        # ---- MODO PEGAR ----
+                        if self.gui.measure_panel.waiting_for_paste:
+                            source_idx = self.gui.measure_panel.copied_measure_index                            
+
+                            if source_idx is not None:
+                                insert_idx = measure_idx
+                                self.engine.duplicate_measure(source_idx, insert_idx)
+
+                            self.gui.measure_panel.waiting_for_paste = False
+                            self.gui.measure_panel.copied_measure_index = None
+
+                            self.selected_measures_indices = []
+                            self._update_content_surface()
+                            return
                         if measure_idx in self.selected_measures_indices:
                             self.selected_measures_indices.remove(measure_idx)                            
                         else:
@@ -488,22 +518,29 @@ class GridPanel:
             self._update_thumb_position()
         
         elif event.type == pygame.KEYDOWN:            
-            if self.editing_repeat is not None:
-                if event.key == pygame.K_RETURN:
-                    self._apply_repeat_input()
-                    return
-                
-                elif event.key == pygame.K_ESCAPE:
+            if event.key == pygame.K_RETURN:
+                self._apply_repeat_input()
+                return
+            
+            elif event.key == pygame.K_ESCAPE:
+                # Cancelar edición de repeat si estaba
+                if self.editing_repeat is not None:
                     self.editing_repeat = None
                     self.repeat_input_text = ""
-                    return
-
-                elif event.key == pygame.K_BACKSPACE:
-                    self.repeat_input_text = self.repeat_input_text[:-1]
-                    return
-                elif event.unicode.isdigit():
-                    self.repeat_input_text += event.unicode
-                    return        
+                # Cancelar copy/paste
+                if hasattr(self.gui.measure_panel, "waiting_for_paste"):
+                    self.gui.measure_panel.waiting_for_paste = False
+                    self.gui.measure_panel.copied_measure_index = None
+                # Limpiar selección
+                self.selected_measures_indices = []
+                self._update_content_surface()
+                return
+            elif event.key == pygame.K_BACKSPACE:
+                self.repeat_input_text = self.repeat_input_text[:-1]
+                return
+            elif event.unicode.isdigit():
+                self.repeat_input_text += event.unicode
+                return        
         
 
     def update(self):

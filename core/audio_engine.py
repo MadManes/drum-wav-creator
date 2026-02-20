@@ -196,29 +196,75 @@ class AudioEngine:
         self.playing = False
         if self.stream and self.stream.is_active():
             self.stream.stop_stream()
-                
 
-    def add_measure(self, beats: int, subdivisions: int):
-        if beats <= 0:
-            beats = 4
-        if subdivisions <= 0:
-            subdivisions = 4
+
+    def insert_measure(self, index: int, beats: int, subdivisions: int):
+
+        if beats <= 0 or subdivisions <= 0:
+            return
+
+        if index < 0:
+            index = 0
+        if index > len(self.measures):
+            index = len(self.measures)
+
+        new_measure = {
+            "length": beats,          # 👈 IMPORTANTE: usar 'length', no 'beats'
+            "subdivisions": subdivisions,
+            "repeat": 1
+        }
 
         with self.lock:
-            self.measures.append({
-                'length': beats,
-                'subdivisions': subdivisions,
-                'repeat': 1
-            })
 
+            # Insertar measure
+            self.measures.insert(index, new_measure)
+
+            # Crear patrón vacío correspondiente
             for inst in self.patterns:
-                self.patterns[inst].append(
-                    [[0] * subdivisions for _ in range(beats)]
-                )
+
+                empty_pattern = [
+                    [0] * subdivisions for _ in range(beats)
+                ]
+
+                self.patterns[inst].insert(index, empty_pattern)
 
             self.total_duration = self.calculate_total_duration()
             self.generate_events()
             self.absolute_position = 0
+       
+                
+
+    def add_measure(self, beats: int, subdivisions: int):
+        self.insert_measure(len(self.measures), beats, subdivisions)
+
+    
+    def duplicate_measure(self, source_idx: int, insert_after_idx: int):
+
+        if not (0 <= source_idx < len(self.measures)):
+            return
+    
+        if not (0 <= insert_after_idx < len(self.measures)):
+            return
+    
+        with self.lock:
+        
+            # Copiar estructura del compás
+            original_measure = self.measures[source_idx]
+            new_measure = original_measure.copy()
+    
+            insert_position = insert_after_idx + 1
+            self.measures.insert(insert_position, new_measure)
+    
+            # Copiar patrones
+            for inst in self.patterns:
+                original_pattern = self.patterns[inst][source_idx]
+                pattern_copy = [beat[:] for beat in original_pattern]
+                self.patterns[inst].insert(insert_position, pattern_copy)
+    
+            self.total_duration = self.calculate_total_duration()
+            self.generate_events()
+            self.absolute_position = 0
+
 
 
     # Mtodo para eliminar compases seleccionados
