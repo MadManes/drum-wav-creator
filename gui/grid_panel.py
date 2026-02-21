@@ -207,6 +207,7 @@ class GridPanel:
         self.repeat_input_text = ""
 
         self._update_content_surface()
+        self.gui.mark_project_dirty()
 
 
     def _draw_all_measures(self):
@@ -462,7 +463,7 @@ class GridPanel:
                 click_pos_in_content_surface = (click_pos_in_visible_area[0] + self.scroll_x,
                                                 click_pos_in_visible_area[1])                
 
-                measure_idx = int(click_pos_in_content_surface[0] // self.measure_width)
+                measure_idx = int(click_pos_in_content_surface[0] // self.measure_width)                
 
                 if 0 <= measure_idx < self.engine.get_measure_count():
                     click_y_in_grid_area = click_pos_in_content_surface[1] - self.header_height
@@ -495,6 +496,7 @@ class GridPanel:
                         # Verificar que los índices calculados existan en la estructura ACTUAL del patrón.
                         self.engine.toggle_cell(instrument_name, measure_idx, beat_idx, subdiv_idx)
                         self._update_content_surface()
+                        self.gui.mark_project_dirty()
                         return
 
 
@@ -519,7 +521,7 @@ class GridPanel:
         
         elif event.type == pygame.KEYDOWN:            
             if event.key == pygame.K_RETURN:
-                self._apply_repeat_input()
+                self._apply_repeat_input()                
                 return
             
             elif event.key == pygame.K_ESCAPE:

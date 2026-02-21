@@ -140,13 +140,21 @@ class SmallMenuPopup(BasePopup):
                 self.gui.popup_manager.open_popup(confirm_popup)
 
         elif index == 1:
-            print("Load Project")
+            self.close()
+            if self.gui.project_is_saved:                
+                self.gui.load_project()
+            else:
+                from .popups import ConfirmLoadProjectPopup
+                confirm_popup = ConfirmLoadProjectPopup(self.gui)
+                self.gui.popup_manager.open_popup(confirm_popup)
 
         elif index == 2:
-            print("Save As")
+            self.close()
+            self.gui.save_project_as()
 
-        elif index == 3:
-            print("Save")
+        elif index == 3:  # Save Project
+            self.close()
+            self.gui.save_project()
 
     def draw(self):
         super().draw()
@@ -188,6 +196,36 @@ class ConfirmNewProjectPopup(BasePopup):
         self.hover_yes = False
         self.hover_no = False
 
+    def draw(self):
+        # Dibujar fondo base del popup
+        super().draw()
+
+        mouse_pos = pygame.mouse.get_pos()
+
+        self.hover_yes = self.yes_rect.collidepoint(mouse_pos)
+        self.hover_no = self.no_rect.collidepoint(mouse_pos)
+
+        # --- Mensaje ---
+        text_surface = self.font.render(self.message, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=(self.rect.centerx, self.rect.centery - 20))
+        self.screen.blit(text_surface, text_rect)
+
+        # --- Botón YES ---
+        yes_color = (70, 70, 70) if not self.hover_yes else (100, 100, 100)
+        pygame.draw.rect(self.screen, yes_color, self.yes_rect, border_radius=6)
+
+        yes_text = self.font.render("Yes", True, (255, 255, 255))
+        yes_text_rect = yes_text.get_rect(center=self.yes_rect.center)
+        self.screen.blit(yes_text, yes_text_rect)
+
+        # --- Botón NO ---
+        no_color = (70, 70, 70) if not self.hover_no else (100, 100, 100)
+        pygame.draw.rect(self.screen, no_color, self.no_rect, border_radius=6)
+
+        no_text = self.font.render("No", True, (255, 255, 255))
+        no_text_rect = no_text.get_rect(center=self.no_rect.center)
+        self.screen.blit(no_text, no_text_rect)
+
 
     def handle_event(self, event):
         super().handle_event(event)
@@ -198,10 +236,10 @@ class ConfirmNewProjectPopup(BasePopup):
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
 
-            # YES (save) - no implementado todavía
-            if self.yes_rect.collidepoint(event.pos):
-                print("Save project not implemented yet")
-                # en el futuro: self.gui.save_project()
+            # YES (primero save) -> luego crear nuevo proyecto
+            if self.yes_rect.collidepoint(event.pos):                
+                self.gui.save_project()
+                self.gui.reset_project()
                 self.close()
 
             # NO → crear nuevo proyecto
@@ -209,4 +247,71 @@ class ConfirmNewProjectPopup(BasePopup):
                 self.gui.reset_project()
                 self.close()
 
-    
+class ConfirmLoadProjectPopup(BasePopup):
+
+    def __init__(self, gui):
+        super().__init__(gui, "confirm_new_project")  # reutilizamos tamaño
+
+        self.font = pygame.font.SysFont("arial", 20)
+
+        self.message = "Do you want to save before loading another project?"
+
+        self.yes_rect = pygame.Rect(
+            self.rect.centerx - 90,
+            self.rect.bottom - 70,
+            80,
+            35
+        )
+
+        self.no_rect = pygame.Rect(
+            self.rect.centerx + 10,
+            self.rect.bottom - 70,
+            80,
+            35
+        )
+
+        self.hover_yes = False
+        self.hover_no = False
+
+    def draw(self):
+        super().draw()
+
+        mouse_pos = pygame.mouse.get_pos()
+
+        self.hover_yes = self.yes_rect.collidepoint(mouse_pos)
+        self.hover_no = self.no_rect.collidepoint(mouse_pos)
+
+        # --- Mensaje ---
+        text_surface = self.font.render(self.message, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=(self.rect.centerx, self.rect.centery - 20))
+        self.screen.blit(text_surface, text_rect)
+
+        # --- YES ---
+        yes_color = (70, 70, 70) if not self.hover_yes else (100, 100, 100)
+        pygame.draw.rect(self.screen, yes_color, self.yes_rect, border_radius=6)
+
+        yes_text = self.font.render("Yes", True, (255, 255, 255))
+        self.screen.blit(yes_text, yes_text.get_rect(center=self.yes_rect.center))
+
+        # --- NO ---
+        no_color = (70, 70, 70) if not self.hover_no else (100, 100, 100)
+        pygame.draw.rect(self.screen, no_color, self.no_rect, border_radius=6)
+
+        no_text = self.font.render("No", True, (255, 255, 255))
+        self.screen.blit(no_text, no_text.get_rect(center=self.no_rect.center))
+
+    def handle_event(self, event):
+        super().handle_event(event)
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+
+            # YES → guardar como... primero, luego cargar
+            if self.yes_rect.collidepoint(event.pos):
+                self.gui.save_project_as()
+                self.gui.load_project()
+                self.close()
+
+            # NO → cargar directamente
+            if self.no_rect.collidepoint(event.pos):
+                self.gui.load_project()
+                self.close()

@@ -14,8 +14,10 @@ class Toolbar():
         self.gui = gui
         self.manager = gui.manager # Guardar la referencia al UIManager
 
+        self.project_font = pygame.font.SysFont("arial", 18)
+
         # Cargar imágenes de fondo de la toolbar (original y modo menú)
-        self.original_image = self.gui.load_image("toolbar_title")
+        self.original_image = self.gui.load_image("toolbar_title_demo")
         # Asegrate de tener una imagen llamada "toolbar_menu_bg.png" (o el nombre que uses)
         self.menu_image = self.gui.load_image("toolbar_menu") # Imagen para el modo men
 
@@ -274,6 +276,24 @@ class Toolbar():
 
         # DIBUJO TOOLBAR EN PANTALLA 
         self.screen.blit(self.current_bg_image, self.rect)
+
+        # --- Project Name ---
+        project_text = self.gui.project_name
+        text_surface = self.project_font.render(project_text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect()
+        text_rect.centery = self.rect.centery
+        text_rect.right = 1060
+
+        self.screen.blit(text_surface, text_rect)
+
+        # --- Save Status Circle ---
+        if self.gui.project_is_saved:
+            circle_color = (0, 200, 0)  # green
+        else:
+            circle_color = (200, 0, 0)  # red
+
+        circle_center = (text_rect.right + 20, self.rect.centery)
+        pygame.draw.circle(self.screen, circle_color, circle_center, 6)
 
 
         # DIBUJO BOTONES DEL MODO ACTIVO (solo tus Custom Buttons de control)

@@ -14,36 +14,12 @@ class MeasurePanel:
         self.width = screen.get_width() * .75
         self.height = screen.get_height() * .18
         
-        self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
-        
-        # SI TUVIERA FONDO!!! (No iria el self rect de arriba porque se manejaria desde aca)
-        #if self.image:
-        #     self.image = pygame.transform.scale(self.image, (self.width, self.height))
-        #     self.rect = self.image.get_rect(topleft=(self.x, self.y))
-        #else:
-        #     self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
-        # SI TUVIERA FONDO!!!
-        
-        
-        ## DEBUG PANELES
-        #self.debug_panel = pygame_gui.elements.UIPanel(
-        #    relative_rect=pygame.Rect(0, 0, 400, 300),
-        #    manager=self.manager,
-        #    starting_height=100,
-        #    visible=True
-        #)
-        #self.debug_label = pygame_gui.elements.UILabel(
-        #    relative_rect=pygame.Rect(10, 10, 380, 280),
-        #    text="DEBUG: Paneles activos",
-        #    manager=self.manager,
-        #    container=self.debug_panel
-        #)
+        self.rect = pygame.Rect(self.x, self.y, self.width, self.height)        
 
         self.panel_container = pygame_gui.elements.UIPanel(
             relative_rect=self.rect,
             manager=self.manager,
-            starting_height=0,
-            #object_id=pygame_gui.core.ObjectID(class_id='@MeasurePanelContainer') # Opcional: asignar un object_id si lo usas en el tema
+            starting_height=0,            
         )
 
         # Panel de información de selección
@@ -289,11 +265,13 @@ class MeasurePanel:
         beats, subdivs = self._get_beats_subdivs()
         self.engine.insert_measure(0, beats, subdivs)
         self.gui.grid_panel._update_content_surface()
+        self.gui.mark_project_dirty()
 
     def _add_measure_last(self):
         beats, subdivs = self._get_beats_subdivs()
         self.engine.insert_measure(len(self.engine.measures), beats, subdivs)
         self.gui.grid_panel._update_content_surface()
+        self.gui.mark_project_dirty()
 
     def _add_measure_after(self):
         selected = self.gui.grid_panel.selected_measures_indices
@@ -306,6 +284,7 @@ class MeasurePanel:
         insert_index = max(selected) + 1
 
         self.engine.insert_measure(insert_index, beats, subdivs)
+        self.gui.mark_project_dirty()
         self.gui.grid_panel.selected_measures_indices = []
         self.gui.grid_panel._update_content_surface()
 
@@ -319,6 +298,7 @@ class MeasurePanel:
         self.waiting_for_paste = True
 
         self.gui.grid_panel._update_content_surface()
+        self.gui.mark_project_dirty()
 
         print("Modo pegar activado. Click en un compás destino.")
 
@@ -355,7 +335,7 @@ class MeasurePanel:
 
         self.engine.repeat_measures(start_idx, end_idx, repeat_times)
 
-        self.gui.grid_panel._update_content_surface()
+        self.gui.grid_panel._update_content_surface()        
         self.repeat_status_label.set_text(f"¡Repetido {repeat_times} veces!")
 
     def draw(self, surface):
@@ -395,6 +375,7 @@ class MeasurePanel:
     
         self.gui.grid_panel.selected_measures_indices = []
         self.gui.grid_panel._update_content_surface()
+        self.gui.mark_project_dirty()
 
 
 
@@ -408,3 +389,4 @@ class MeasurePanel:
         self.engine.delete_measures(selected)
         self.gui.grid_panel.selected_measures_indices = []
         self.gui.grid_panel._update_content_surface()
+        self.gui.mark_project_dirty()

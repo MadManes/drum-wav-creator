@@ -37,7 +37,9 @@ class DrumGUI:
         # Se inicializa aquí y se accede desde MeasurePanel y se actualiza en el bucle de eventos
         self.input_values = {'beats': '4', 'subdivisions': '4'}
 
-        self.project_is_saved = True
+        self.project_name = "Untitled"
+        self.project_path = None
+        self.project_is_saved = False
 
 
     def load_image(self, name):
@@ -87,6 +89,17 @@ class DrumGUI:
                                         self.screen, self)
         self.panels.append(self.footer_panel)
 
+    
+    def mark_project_dirty(self):
+        self.project_is_saved = False
+    
+    def mark_project_saved(self, path):
+        import os
+
+        self.project_path = path
+        self.project_name = os.path.splitext(os.path.basename(path))[0]
+        self.project_is_saved = True
+
     def reset_project(self):
         self.engine.stop()
 
@@ -99,15 +112,142 @@ class DrumGUI:
         self.engine.add_measure(initial_beats, initial_subdiv)
 
         # actualizar grid visual
-        self.grid_panel._update_content_surface()
-
-        self.project_is_saved = True
+        self.grid_panel._update_content_surface()        
 
         if hasattr(self, "grid_panel"):
             self.grid_panel.clear_selection()
 
         if hasattr(self, "control_panel"):
             self.control_panel.is_playing = False
+
+        self.project_name = "Untitled"
+        self.project_path = None
+        self.project_is_saved = False
+
+    def save_project_as(self):
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".dwc",
+            filetypes=[("DrumWavCreator Project", "*.dwc")],
+            title="Save Project As"
+        )
+
+        root.destroy()
+
+        if file_path:
+            self.project_path = file_path
+            self.project_name = os.path.splitext(os.path.basename(file_path))[0]
+            self.save_project()
+    
+    def serialize_project(self):
+
+        measures_data = []
+        for measure in self.engine.measures:
+            measures_data.append({
+                "length": measure.get("length", 4),
+                "subdivisions": measure.get("subdivisions", 4),
+                "repeat": measure.get("repeat", 1)
+            })
+
+        return {
+            "version": 1,
+            "project": {
+                "bpm": self.engine.bpm,
+                "name": self.project_name
+            },
+            "measures": measures_data,
+            "patterns": self.engine.patterns
+        }
+
+    
+
+    def save_project(self):
+        if self.project_path is None:
+            self.save_project_as()
+            return
+        
+        import json
+
+        data = self.serialize_project()
+
+        with open(self.project_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+
+        self.project_is_saved = True
+
+    def load_project(self):
+        import tkinter as tk
+        from tkinter import filedialog
+        import json
+
+        root = tk.Tk()
+        root.withdraw()
+
+        file_path = filedialog.askopenfilename(
+            filetypes=[("DrumWavCreator Project", "*.dwc")],
+            title="Load Project"
+        )
+
+        root.destroy()
+
+        if not file_path:
+            return
+
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        self.load_from_dict(data)
+
+        self.project_path = file_path
+        self.project_name = data["project"]["name"]
+        self.project_is_saved = True
+
+    
+    def load_from_dict(self, data):
+
+        self.engine.stop()
+
+        with self.engine.lock:
+
+            self.engine.measures.clear()
+
+            for inst in self.engine.patterns:
+                self.engine.patterns[inst].clear()
+
+            self.engine.bpm = data["project"]["bpm"]
+
+            # --- Cargar measures ---
+            for m in data["measures"]:
+                self.engine.measures.append({
+                    "length": m.get("length", 4),
+                    "subdivisions": m.get("subdivisions", 4),
+                    "repeat": m.get("repeat", 1)
+                })
+
+            # --- Cargar patterns ---
+            loaded_patterns = data.get("patterns", {})
+
+            for inst in self.engine.patterns:
+                if inst in loaded_patterns:
+                    self.engine.patterns[inst] = loaded_patterns[inst]
+                else:
+                    # Si falta instrumento, crear patrón vacío
+                    self.engine.patterns[inst] = [
+                        [[0] * m["subdivisions"] for _ in range(m["length"])]
+                        for m in self.engine.measures
+                    ]
+
+            self.engine.total_duration = self.engine.calculate_total_duration()
+            self.engine.generate_events()
+            self.engine.absolute_position = 0
+
+        self.grid_panel._update_content_surface()
+
 
     def run(self):
         running = True        
