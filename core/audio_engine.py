@@ -8,6 +8,12 @@ from core.constants import SAMPLE_RATE, CHANNELS, BUFFER_SIZE, DEFAULT_BPM
 from dataclasses import dataclass
 
 @dataclass
+class LoopBlock:
+    start: int
+    end: int
+    times: int
+
+@dataclass
 class AudioEvent:
     time: float
     samples: np.ndarray
@@ -35,6 +41,8 @@ class AudioEngine:
         # Diccionario para almacenar los patrones de los instrumentos
         self.patterns = {inst: [] for inst in sounds.keys()}
 
+        self.loop_blocks: list[LoopBlock] = []
+
 
     def set_bpm(self, bpm: float):
         if bpm <= 0:
@@ -46,9 +54,55 @@ class AudioEngine:
             self.absolute_position = 0
 
     
+    def add_loop_block(self, start_idx: int, end_idx: int, times: int):
+        if times < 2:
+            return
+
+        if start_idx < 0 or end_idx >= len(self.measures):
+            return
+
+        if start_idx > end_idx:
+            return
+
+        with self.lock:
+
+            # 🔥 Eliminar cualquier bloque que se superponga
+            self.loop_blocks = [
+                block for block in self.loop_blocks
+                if not (block.start <= end_idx and block.end >= start_idx)
+            ]
+
+            # Crear nuevo bloque real
+            new_block = LoopBlock(
+                start=start_idx,
+                end=end_idx,
+                times=times
+            )
+
+            self.loop_blocks.append(new_block)
+
+            # Ordenar por start (importante para generate_events)
+            self.loop_blocks.sort(key=lambda b: b.start)
+
+            self.generate_events()
+            self.absolute_position = 0
+
+    
+    def clear_loop_blocks(self):
+        with self.lock:
+            self.loop_blocks.clear()
+            self.generate_events()
+            self.absolute_position = 0
+
+    
+    def clear_loop_block(self):
+        with self.lock:
+            self.loop_block = None
+
+    
     def get_current_playback_time(self):
         if self.total_duration > 0:
-            return (self.absolute_position % (self.total_duration * SAMPLE_RATE)) / SAMPLE_RATE
+            return self.absolute_position / SAMPLE_RATE
         return 0.0
 
 
@@ -61,10 +115,11 @@ class AudioEngine:
         if not self.measures:
             return 0
 
+        beat_duration = self.calculate_beat_duration()
+
         for measure_info in self.measures:
             beats_per_measure = measure_info.get('length', 4)
-            repeat = measure_info.get('repeat', 1)
-            total_duration_seconds += self.calculate_beat_duration() * beats_per_measure * repeat
+            total_duration_seconds += beat_duration * beats_per_measure
 
         return total_duration_seconds
     
@@ -113,6 +168,14 @@ class AudioEngine:
     
     def get_bpm(self):
         return self.bpm
+    
+    def set_playback_time(self, time_seconds):
+        self.current_playback_time = max(0, min(time_seconds, self.get_total_duration()))
+
+    def set_playback_position_seconds(self, seconds: float):
+        with self.lock:
+            seconds = max(0, min(seconds, self.total_duration))
+            self.absolute_position = int(seconds * SAMPLE_RATE)
 
     def update_measure_structure(self, measure_idx: int, beats: int, subdivisions: int):
         if beats <= 0 or subdivisions <= 0:
@@ -159,8 +222,40 @@ class AudioEngine:
             self.generate_events()
             self.absolute_position = 0
 
+    
+    def get_time_at_measure(self, measure_idx: int) -> float:
+        if measure_idx <= 0:
+            return 0.0
 
+        beat_duration = self.calculate_beat_duration()
+        accumulated_time = 0.0
 
+        for i in range(min(measure_idx, len(self.measures))):
+            measure_info = self.measures[i]
+            beats = measure_info.get('length', 4)
+            accumulated_time += beats * beat_duration
+
+        return accumulated_time
+    
+
+    def get_duration_of_measures(self, start_idx: int, end_idx: int) -> float:
+        if start_idx < 0 or end_idx >= len(self.measures):
+            return 0.0
+
+        if start_idx > end_idx:
+            return 0.0
+
+        beat_duration = self.calculate_beat_duration()
+        duration = 0.0
+
+        for i in range(start_idx, end_idx + 1):
+            measure_info = self.measures[i]
+            beats = measure_info.get('length', 4)
+            duration += beats * beat_duration
+
+        return duration
+    
+    
     def toggle_cell(self, instrument, measure_idx, beat, subdiv_idx):
         with self.lock:
             if instrument in self.patterns and \
@@ -209,9 +304,8 @@ class AudioEngine:
             index = len(self.measures)
 
         new_measure = {
-            "length": beats,          # 👈 IMPORTANTE: usar 'length', no 'beats'
-            "subdivisions": subdivisions,
-            "repeat": 1
+            "length": beats,          # IMPORTANTE: usar 'length', no 'beats'
+            "subdivisions": subdivisions,            
         }
 
         with self.lock:
@@ -270,6 +364,21 @@ class AudioEngine:
     # Mtodo para eliminar compases seleccionados
     def delete_measures(self, indices: list[int]):
         with self.lock:
+            # Ajustar o eliminar bloques afectados
+            updated_blocks = []
+
+            for block in self.loop_blocks:
+                if block.end < 0 or block.start >= len(self.measures):
+                    continue
+                
+                # Si el bloque fue parcialmente eliminado, descartarlo
+                if any(idx >= block.start and idx <= block.end for idx in indices):
+                    continue
+                
+                updated_blocks.append(block)
+
+            self.loop_blocks = updated_blocks
+
             for measure_idx in sorted(indices, reverse=True):
                 if 0 <= measure_idx < len(self.measures):
                     del self.measures[measure_idx]
@@ -279,117 +388,229 @@ class AudioEngine:
             self.total_duration = self.calculate_total_duration()
             self.generate_events()
             self.absolute_position = 0
-    
-    def set_measure_repeat(self, measure_idx: int, repeat: int):
-        if repeat < 1:
-            repeat = 1
-    
-        with self.lock:
-            if 0 <= measure_idx < len(self.measures):
-                self.measures[measure_idx]['repeat'] = repeat
-                self.total_duration = self.calculate_total_duration()
-                self.generate_events()
-                self.absolute_position = 0
 
+    
+    def remove_loop_block(self, start, end):
+        self.loop_blocks = [
+            loop for loop in self.loop_blocks
+            if not (loop.start == start and loop.end == end)
+        ]
+
+
+    def _generate_measure_events(self, measure_idx, accumulated_time, beat_duration):
+        measure_info = self.measures[measure_idx]
+        current_beats = measure_info.get('length', 4)
+        current_subdiv = measure_info.get('subdivisions', 4)
+
+        measure_duration = current_beats * beat_duration
+
+        for inst in self.patterns:
+            pattern_for_measure = self.patterns[inst][measure_idx]
+
+            for beat_idx in range(current_beats):
+                for subdiv_idx in range(current_subdiv):
+                    if pattern_for_measure[beat_idx][subdiv_idx] == 1:
+                        time = (
+                            accumulated_time +
+                            (beat_idx * beat_duration) +
+                            (subdiv_idx / current_subdiv * beat_duration)
+                        )
+
+                        event = AudioEvent(
+                            time=time,
+                            samples=self.sounds[inst],
+                            duration=len(self.sounds[inst]) / SAMPLE_RATE,
+                            instrument=inst
+                        )
+
+                        self.events.append(event)
+
+        return accumulated_time + measure_duration
+    
+
+    def get_current_time(self):
+        with self.lock:
+            return self.absolute_position / SAMPLE_RATE
+
+    
+    def get_visual_time(self):
+
+        with self.lock:
+            current_time = self.absolute_position / SAMPLE_RATE
+
+        if not self.loop_blocks:
+            return current_time
+
+        for loop in self.loop_blocks:
+
+            loop_start = self.get_time_at_measure(loop.start)
+            loop_duration = self.get_duration_of_measures(loop.start, loop.end)
+            expanded_duration = loop_duration * loop.times
+            loop_end_expanded = loop_start + expanded_duration
+
+            # 🔥 Si estamos dentro del bloque expandido
+            if loop_start <= current_time < loop_end_expanded:
+
+                time_inside = current_time - loop_start
+                time_in_block = time_inside % loop_duration
+
+                return loop_start + time_in_block
+
+            # 🔥 Si ya pasó completamente el bloque expandido
+            if current_time >= loop_end_expanded:
+                # Saltar expansión pero sin modificar acumulativamente
+                current_time = current_time - (expanded_duration - loop_duration)
+
+        return current_time
+    
+
+    def get_visual_position_data(self):
+        """
+        Devuelve:
+        - measure_index visual actual
+        - offset en segundos dentro del compás
+        """
+
+        with self.lock:
+            current_time = self.absolute_position / SAMPLE_RATE
+
+        visual_time = self.get_visual_time()
+
+        # encontrar compás actual
+        accumulated = 0.0
+
+        for i in range(self.get_measure_count()):
+            measure_duration = self.get_duration_of_measures(i, i)
+
+            if accumulated + measure_duration > visual_time:
+                offset = visual_time - accumulated
+                return i, offset
+
+            accumulated += measure_duration
+
+        return self.get_measure_count() - 1, 0.0
+    
 
     # Genera la lista de eventos de audio basados en el patrn actual
     def generate_events(self):
-        self.events = [] # Limpiar la lista de eventos para regenerarla
+        self.events = []
+
         beat_duration = self.calculate_beat_duration()
-        accumulated_time = 0.0        
 
-        for measure_idx, measure_info in enumerate(self.measures):
-            current_beats = measure_info.get('length', 4)
-            current_subdiv = measure_info.get('subdivisions', 4)
-            repeat = measure_info.get('repeat', 1)
+        # Creamos una lista expandida de índices reales
+        expanded_measure_indices = []
 
-            measure_duration = current_beats * beat_duration
+        i = 0
+        while i < len(self.measures):
 
-            for r in range(repeat):
+            loop_applied = False
 
-                for inst in self.patterns:
-                    if inst in self.patterns and measure_idx < len(self.patterns[inst]):
-                        pattern_for_measure = self.patterns[inst][measure_idx]
-                        pattern_beats = len(pattern_for_measure)
-                        pattern_subdivs_per_beat = 0
+            for loop in self.loop_blocks:
+                if loop.start == i:
+                
+                    block_range = list(range(loop.start, loop.end + 1))
 
-                        if pattern_beats > 0 and len(pattern_for_measure[0]) > 0:
-                            pattern_subdivs_per_beat = len(pattern_for_measure[0])
-                        if pattern_beats == current_beats and pattern_subdivs_per_beat == current_subdiv:
-                            for beat_idx in range(current_beats):
-                                for subdiv_idx in range(current_subdiv):
-                                    if pattern_for_measure[beat_idx][subdiv_idx] == 1:
-                                        time = (
-                                            accumulated_time + 
-                                            (beat_idx * beat_duration) + 
-                                            (subdiv_idx / current_subdiv * beat_duration)
-                                        )
+                    for _ in range(loop.times):
+                        expanded_measure_indices.extend(block_range)
 
-                                        event = AudioEvent(
-                                            time=time,
-                                            samples=self.sounds[inst],
-                                            duration=len(self.sounds[inst]) / SAMPLE_RATE,
-                                            instrument=inst
-                                        )
+                    i = loop.end + 1
+                    loop_applied = True
+                    break
 
-                                        self.events.append(event)
+            if not loop_applied:
+                expanded_measure_indices.append(i)
+                i += 1
 
-                accumulated_time += measure_duration
+        # Ahora generamos eventos linealmente
+        accumulated_time = 0.0
+
+        for measure_idx in expanded_measure_indices:
+
+            measure_info = self.measures[measure_idx]
+            beats = measure_info.get('length', 4)
+            subdivs = measure_info.get('subdivisions', 4)
+
+            for inst in self.patterns:
+                pattern_for_measure = self.patterns[inst][measure_idx]
+
+                for beat_idx in range(beats):
+                    for subdiv_idx in range(subdivs):
+
+                        if pattern_for_measure[beat_idx][subdiv_idx] == 1:
+
+                            time = (
+                                accumulated_time +
+                                beat_idx * beat_duration +
+                                (subdiv_idx / subdivs) * beat_duration
+                            )
+
+                            self.events.append(AudioEvent(
+                                time=time,
+                                samples=self.sounds[inst],
+                                duration=len(self.sounds[inst]) / SAMPLE_RATE,
+                                instrument=inst
+                            ))
+
+            accumulated_time += beats * beat_duration
+
+        self.total_duration = accumulated_time
+        self.events.sort(key=lambda e: e.time)
+
 
     def callback(self, in_data, frame_count, time_info, status):
+
         buffer = np.zeros((frame_count, CHANNELS), dtype=np.float32)
-    
+
         with self.lock:
             playing = self.playing
-            total_duration = self.total_duration
             absolute_position = self.absolute_position
-            events = self.events.copy()
-    
-        if playing and total_duration > 0:
-            total_samples = int(total_duration * SAMPLE_RATE)
-    
-            if total_samples > 0:
-                absolute_position %= total_samples
-                current_time = absolute_position / SAMPLE_RATE
-    
-                buffer_start_time = current_time
-                buffer_end_time = current_time + frame_count / SAMPLE_RATE
-    
-                for event in events:
-                    start_time = event.time
-                    event_samples = event.samples
-                    event_duration = event.duration
-    
-                    if start_time >= buffer_end_time:
-                        continue
-                    if start_time + event_duration <= buffer_start_time:
-                        continue
-                    
-                    event_start_frame = int((start_time - buffer_start_time) * SAMPLE_RATE)
-                    sample_offset = max(0, -event_start_frame)
-    
-                    buffer_start_frame = max(0, event_start_frame)
-    
-                    frames_available = min(
-                        frame_count - buffer_start_frame,
-                        len(event_samples) - sample_offset
-                    )
-    
-                    if frames_available > 0:
-                        buffer[
-                            buffer_start_frame : buffer_start_frame + frames_available
-                        ] += event_samples[
-                            sample_offset : sample_offset + frames_available
-                        ]
-    
-                absolute_position += frame_count
-    
+            events = self.events
+            total_duration = self.total_duration
+
+        if not playing or total_duration <= 0:
+            silent = (buffer * 32767).astype(np.int16)
+            return (silent.tobytes(), pyaudio.paContinue)
+
+        total_samples = int(total_duration * SAMPLE_RATE)
+
+        buffer_start_sample = absolute_position
+        buffer_end_sample = absolute_position + frame_count
+
+        # 🔥 SOLO PROCESAR EVENTOS DENTRO DEL RANGO
+        for event in events:
+
+            event_start = int(event.time * SAMPLE_RATE)
+            event_end = event_start + len(event.samples)
+
+            if event_end < buffer_start_sample:
+                continue
+
+            if event_start > buffer_end_sample:
+                break  # eventos están ordenados → cortar aquí
+
+            overlap_start = max(event_start, buffer_start_sample)
+            overlap_end = min(event_end, buffer_end_sample)
+
+            if overlap_start < overlap_end:
+
+                buffer_offset = overlap_start - buffer_start_sample
+                sample_offset = overlap_start - event_start
+                length = overlap_end - overlap_start
+
+                buffer[buffer_offset:buffer_offset+length] += \
+                    event.samples[sample_offset:sample_offset+length]
+
+        absolute_position += frame_count
+
+        if absolute_position >= total_samples:
+            absolute_position = 0
+
         with self.lock:
             self.absolute_position = absolute_position
-    
+
         buffer = np.clip(buffer, -1, 1)
         buffer = (buffer * 32767).astype(np.int16)
-    
+
         return (buffer.tobytes(), pyaudio.paContinue)
         
         

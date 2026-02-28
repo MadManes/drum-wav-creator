@@ -60,7 +60,7 @@ class MeasurePanel:
 
         # Panel de repetición
         self.repeat_panel = pygame_gui.elements.UIPanel(
-            relative_rect=pygame.Rect(25, 180, 300, 120),
+            relative_rect=pygame.Rect(325, 80, 300, 120),
             manager=self.manager,
             container=self.panel_container,
             starting_height=2,
@@ -181,12 +181,38 @@ class MeasurePanel:
         self.waiting_for_paste = False
 
 
+    def _show_block_info(self, loop):
+        self.info_panel.show()
+        self.repeat_panel.show()
+
+        measures_text = f"Measures: {loop.start+1} - {loop.end+1}"
+        repeat_text = f"Repeat x{loop.times}"
+
+        self.info_labels['beats'].set_text("")
+        self.info_labels['subdiv'].set_text("")
+        self.info_labels['bpm'].set_text("")
+        self.info_labels['measures'].set_text(measures_text)
+
+        if not self.repeat_input.is_focused:
+            self.repeat_input.set_text(str(loop.times))
+        self.repeat_status_label.set_text(repeat_text)
+        self.repeat_apply_btn.enable()
+
+
     def _update_info_panel(self):
-        selected = self.gui.grid_panel.selected_measures_indices
+        selected = sorted(self.gui.grid_panel.selected_measures_indices)
+
         if not selected:
             self.info_panel.hide()
             self.repeat_panel.hide()
             self.copy_button.disable()
+            return
+
+        # --------------------------
+        # CHECK SI ES BLOQUE EXACTO
+        # --------------------------
+        if self.gui.grid_panel.block_selected:
+            self._show_block_info(self.gui.grid_panel.block_selected)
             return
             
         self.info_panel.show()
@@ -313,9 +339,8 @@ class MeasurePanel:
         except ValueError:
             return 4, 4
 
-        return beats, subdivs
-
-
+        return beats, subdivs 
+    
 
     def _handle_repeat_action(self):
         try:
@@ -330,13 +355,44 @@ class MeasurePanel:
         if not selected:
             return
 
+        # Verificar que sea consecutivo
+        is_consecutive = all(
+            selected[i] + 1 == selected[i+1]
+            for i in range(len(selected)-1)
+        )
+
+        if not is_consecutive:
+            self.repeat_status_label.set_text("Selección no continua")
+            return
+
         start_idx = selected[0]
         end_idx = selected[-1]
 
-        self.engine.repeat_measures(start_idx, end_idx, repeat_times)
+        if self.gui.grid_panel.block_selected:
+            loop = self.gui.grid_panel.block_selected
+            start_idx = loop.start
+            end_idx = loop.end
+        else:
+            # modo crear bloque
+            selected = sorted(self.gui.grid_panel.selected_measures_indices)
+            if not selected:
+                return
+            start_idx = selected[0]
+            end_idx = selected[-1]
 
-        self.gui.grid_panel._update_content_surface()        
+        # Primero eliminar bloque existente si hay
+        self.engine.remove_loop_block(start_idx, end_idx)
+
+        if repeat_times > 1:
+            self.engine.add_loop_block(start_idx, end_idx, repeat_times)            
+        else:            
+            self.gui.grid_panel.block_selected = None
+
+        self.gui.grid_panel.selected_measures_indices = []
+        self.gui.grid_panel.block_selected = None
+        self.gui.grid_panel._update_content_surface()
         self.repeat_status_label.set_text(f"¡Repetido {repeat_times} veces!")
+        
 
     def draw(self, surface):
         ## NO ESTOY DIBUJANDO NADA POR AHORA CON ESTE METODO (antes dibujaba el fondo)

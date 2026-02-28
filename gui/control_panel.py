@@ -137,28 +137,28 @@ class ControlPanel:
 
         panel_rect = self.bpm_panel_button.rect
 
-        arrow_area_x = panel_rect.x + panel_rect.width * 0.6402
+        arrow_area_x = panel_rect.x + panel_rect.width * 0.625
         arrow_area_width = panel_rect.width * 0.22
         
         arrow_width = arrow_area_width * 0.65
-        arrow_height = panel_rect.height * 0.55
+        arrow_height = panel_rect.height * 0.25
         
         arrow_x = arrow_area_x + (arrow_area_width - arrow_width) / 2
         
         # FLECHA UP
         self.bpm_up_rect = pygame.Rect(
-            arrow_x,
-            panel_rect.y + panel_rect.height * 0.18,
-            arrow_width,
-            arrow_height
+            int(arrow_x),
+            int(panel_rect.y + panel_rect.height * 0.42),
+            int(arrow_width),
+            int(arrow_height)
         )
         
         # FLECHA DOWN
         self.bpm_down_rect = pygame.Rect(
-            arrow_x,
-            panel_rect.y + panel_rect.height * 0.58,
-            arrow_width,
-            arrow_height
+            int(arrow_x),
+            int(panel_rect.y + panel_rect.height * 0.65),
+            int(arrow_width),
+            int(arrow_height)
         )
 
         # BOTON DOWNLOAD WAV
@@ -259,23 +259,52 @@ class ControlPanel:
             bpm_text = bpm_font.render(f"{self.engine.bpm}", True, (0, 255, 255))
             bpm_text_rect = bpm_text.get_rect(center=self.bpm_value_rect.center)
             self.screen.blit(bpm_text, bpm_text_rect)
-            # Flecha UP
-            #pygame.draw.rect(self.screen, (60, 60, 60), self.bpm_up_rect, border_radius=4)
-            up_text = bpm_font.render("▲", True, (255, 255, 255))
-            self.screen.blit(up_text, up_text.get_rect(center=self.bpm_up_rect.center))
-            # Flecha DOWN
-            #pygame.draw.rect(self.screen, (60, 60, 60), self.bpm_down_rect, border_radius=4)
-            down_text = bpm_font.render("▼", True, (255, 255, 255))
-            self.screen.blit(down_text, down_text.get_rect(center=self.bpm_down_rect.center))
+
+            ## DEBUG RECTS BOTONES DE FLECHAS BPM
+            #pygame.draw.rect(self.screen, (255,0,0), self.bpm_up_rect, 1)
+            #pygame.draw.rect(self.screen, (0,255,0), self.bpm_down_rect, 1)
+            #########
+
+            # FLECHAS UP/DOWN
+            arrow_font_size = int(self.bpm_up_rect.height * 0.6)
+            arrow_font = pygame.font.SysFont("arial", arrow_font_size)
+
+            up_text = arrow_font.render("▲", True, (255,255,255))
+            down_text = arrow_font.render("▼", True, (255,255,255))            
+
+            up_text_rect = up_text.get_rect(center=self.bpm_up_rect.center)
+            self.screen.blit(up_text, up_text_rect)
+
+            down_text_rect = down_text.get_rect(center=self.bpm_down_rect.center)
+            self.screen.blit(down_text, down_text_rect)
         
         self.is_playing = self.engine.is_playing()
 
 
     def _play(self):
-        # Solo iniciar si no est reproduciendo ya
-        if not self.engine.is_playing(): # Usar el estado del engine como fuente de verdad            
+        if not self.engine.is_playing():
+
+            # ----------------------------------------
+            # ARRANCAR DESDE PLAYBACK LINE POSITION
+            # ----------------------------------------
+
+            grid = self.gui.grid_panel
+
+            total_width = grid._calculate_total_visual_width()
+            total_duration = self.engine.get_total_duration()
+
+            if total_width > 0 and total_duration > 0:
+                percentage = grid.manual_playback_x / total_width
+                new_time = percentage * total_duration
+                self.engine.set_playback_time(new_time)
+
+            # Sincronizar posición antes de arrancar
+            if hasattr(self.gui, "grid_panel"):
+                self.gui.grid_panel.sync_engine_position()
+
             self.engine.start()
-            self.is_playing = True # Actualizar el estado local
+            self.is_playing = True
+            self.gui.grid_panel.auto_follow_playback = True
 
 
     def _pause(self):

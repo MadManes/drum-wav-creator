@@ -54,7 +54,7 @@ class DrumGUI:
                 return None
 
         return self.assets.get(name) # Usar .get para devolver None si la imagen no se cargó
-
+    
 
     def create_panels(self):        
 
@@ -71,13 +71,24 @@ class DrumGUI:
         self.panels.append(self.measure_panel)
 
         ## INSTRUMENTS PANEL        
-        self.instruments_panel = InstrumentsPanel(0, self.toolbar.height + self.control_panel.height, self.screen, self)
+        self.instruments_panel = InstrumentsPanel(0, 
+                                                  self.toolbar.height + self.control_panel.height, 
+                                                  self.screen, 
+                                                  self, 
+                                                  self.editor_layout
+                                                  )
         self.panels.append(self.instruments_panel)
 
         ## GRID PANEL (Este SÍ usa pygame-gui UIManager para eventos, aunque el scroll sea manual)
         # Asegurarse de pasar el manager a GridPanel
-        self.grid_panel = GridPanel(self.instruments_panel.width, self.toolbar.height + self.control_panel.height,
-                                    self.screen, self.engine, self.manager, self)
+        self.grid_panel = GridPanel(self.instruments_panel.width, 
+                                    self.toolbar.height + self.control_panel.height,
+                                    self.screen, 
+                                    self.engine, 
+                                    self.manager, 
+                                    self,
+                                    self.editor_layout
+                                    )
         self.panels.append(self.grid_panel)
 
         ## FOOTER PANEL
@@ -105,6 +116,9 @@ class DrumGUI:
 
         # limpiar medidas
         self.engine.measures.clear()
+
+        # limpiar bloques
+        self.engine.loop_blocks.clear()
 
         # crear medida inicial
         initial_beats = int(self.input_values['beats'])
@@ -154,6 +168,15 @@ class DrumGUI:
                 "repeat": measure.get("repeat", 1)
             })
 
+        loop_blocks_data = []
+
+        for loop in self.engine.loop_blocks:
+            loop_blocks_data.append({
+                "start": loop.start,
+                "end": loop.end,
+                "times": loop.times
+            })
+
         return {
             "version": 1,
             "project": {
@@ -161,7 +184,8 @@ class DrumGUI:
                 "name": self.project_name
             },
             "measures": measures_data,
-            "patterns": self.engine.patterns
+            "patterns": self.engine.patterns,
+            "loop_blocks": loop_blocks_data
         }
 
     
@@ -211,6 +235,8 @@ class DrumGUI:
     def load_from_dict(self, data):
 
         self.engine.stop()
+        # Cargar bloques
+        loaded_blocks = data.get("loop_blocks", [])
 
         with self.engine.lock:
 
@@ -240,17 +266,41 @@ class DrumGUI:
                     self.engine.patterns[inst] = [
                         [[0] * m["subdivisions"] for _ in range(m["length"])]
                         for m in self.engine.measures
-                    ]
+                    ]            
 
             self.engine.total_duration = self.engine.calculate_total_duration()
             self.engine.generate_events()
             self.engine.absolute_position = 0
 
+        # Limpiar y agregar bloques
+        self.engine.loop_blocks.clear()
+
+        for block in loaded_blocks:
+            self.engine.add_loop_block(
+                block["start"],
+                block["end"],
+                block["times"]
+            )
+
+        # Regenerar ahora nuevamente pero con bloques
+        self.engine.total_duration = self.engine.calculate_total_duration()
+        self.engine.generate_events()
         self.grid_panel._update_content_surface()
 
 
     def run(self):
-        running = True        
+        running = True
+        grid_total_height = self.screen.get_height() * 0.68
+        header_height = 30
+
+        reserved_bottom_space = 40
+        content_height = grid_total_height - 20  # si restás scrollbar
+
+        self.editor_layout = EditorLayout(header_height, 
+                                          content_height,
+                                          reserved_bottom_space
+                                          )
+        
         self.create_panels() # Crea todos los paneles al inicio        
 
         # --- Añadir la medida inicial aquí, después de crear los paneles y enlazar grid_panel al engine ---
@@ -341,3 +391,11 @@ class DrumGUI:
 
 # La llamada a gui.run() en main.py inicia el bucle principal.
 # El resto del código en main.py después de gui.run() no se ejecutará hasta que gui.run() termine.
+
+
+
+class EditorLayout:
+        def __init__(self, header_height, content_height, bottom_space):
+            self.header_height = header_height
+            self.content_height = content_height
+            self.bottom_space = bottom_space
