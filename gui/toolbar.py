@@ -124,7 +124,12 @@ class Toolbar():
                                          mode_toggle_normal, mode_toggle_hover, action=self._toggle_menu_mode)
         self.control_buttons.append(self.mode_toggle_button)
 
-        # Puedes añadir otros botones de control si los tienes
+        # Podemos añadir otros botones de control si hubiera
+
+        # Tomamos de referencia el ultimo boton para dibujar correctamente el "untitled" y el círculo
+        self.rightmost_button = max(self.control_buttons, key=lambda b: b.rect.right)
+
+
 
 
     # --- NUEVO MÉTODO para crear los botones del modo menú (con pygame_gui) ---
@@ -282,7 +287,8 @@ class Toolbar():
         text_surface = self.project_font.render(project_text, True, (255, 255, 255))
         text_rect = text_surface.get_rect()
         text_rect.centery = self.rect.centery
-        text_rect.right = 1060
+        margin = 80
+        text_rect.right = self.rightmost_button.rect.left - margin        
 
         self.screen.blit(text_surface, text_rect)
 
@@ -292,7 +298,7 @@ class Toolbar():
         else:
             circle_color = (200, 0, 0)  # red
 
-        circle_center = (text_rect.right + 20, self.rect.centery)
+        circle_center = (text_rect.right + 10, self.rect.centery)
         pygame.draw.circle(self.screen, circle_color, circle_center, 6)
 
 

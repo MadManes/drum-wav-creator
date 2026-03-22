@@ -24,8 +24,7 @@ class GridPanel:
         self.height = screen.get_height() * 0.68
         self.measure_width = 600 # Ancho fijo para cada compás
         self.header_height = self.layout.header_height
-
-        self.user_scrolling = False
+        
         self.scrollbar_height = 20
 
         self.visible_area_rect = pygame.Rect(self.x, self.y, self.width, self.height - self.scrollbar_height)
@@ -36,6 +35,8 @@ class GridPanel:
 
         self.scroll_x = 0
         self.max_scroll_x = 0
+
+        self.user_scrolling = False
 
         self.scrollbar_track_rect = pygame.Rect(self.x, self.y + self.height - self.scrollbar_height, self.width, self.scrollbar_height)
         self.scrollbar_thumb_rect = pygame.Rect(self.scrollbar_track_rect.x, self.scrollbar_track_rect.y, self.scrollbar_height, self.scrollbar_height)
@@ -52,17 +53,17 @@ class GridPanel:
         self._update_content_surface()
 
     
-    def sync_engine_position(self):
-        total_width = self._calculate_total_visual_width()
-        total_duration = self.engine.get_total_duration()
-
-        if total_width <= 0 or total_duration <= 0:
-            return
-
-        progress = self.manual_playback_x / total_width
-        new_time = progress * total_duration
-
-        self.engine.set_playback_position_seconds(new_time)
+    #def sync_engine_position(self):
+    #    total_width = self._calculate_total_visual_width()
+    #    total_duration = self.engine.get_total_duration()
+#
+    #    if total_width <= 0 or total_duration <= 0:
+    #        return
+#
+    #    progress = self.manual_playback_x / total_width
+    #    new_time = progress * total_duration
+#
+    #    self.engine.set_playback_position_seconds(new_time)
 
 
     def draw_playback_line(self, surface):
@@ -87,8 +88,8 @@ class GridPanel:
                 + local_progress * self.measure_width
             )
 
-        line_x = max(0, min(self.manual_playback_x, total_width))
-        self.manual_playback_x = line_x
+        line_x = self.get_playhead_x()
+        screen_x = self.visible_area_rect.x + (line_x - self.scroll_x)
 
         # ---------------------------------
         #  DIBUJAR LINEA
@@ -98,10 +99,7 @@ class GridPanel:
             self.visible_area_rect.y
             + self.current_content_draw_height
             - self.layout.bottom_space // 2
-        )
-        
-        
-        screen_x = self.visible_area_rect.x + (line_x - self.scroll_x)
+        )        
         
         if self.visible_area_rect.x <= screen_x <= self.visible_area_rect.right:
             pygame.draw.line(
@@ -281,6 +279,24 @@ class GridPanel:
             self.visible_area_rect.width,
             bottom - top
         )
+    
+    def _get_playhead_click_area(self):
+
+        top = (
+            self.visible_area_rect.y
+            + self.current_content_draw_height
+            - self.layout.bottom_space
+        )
+
+        half = self.layout.bottom_space // 2
+
+        return pygame.Rect(
+            self.visible_area_rect.x,
+            top,
+            self.visible_area_rect.width,
+            half
+        )
+
 
 
     def _draw_measure_selection(self, measure_idx, x_pos):
@@ -339,21 +355,23 @@ class GridPanel:
         self._ensure_surface_size()
         self._draw_all_measures()
         self._update_scroll_limits()
-        self._draw_loop_blocks_area()
-
+        self._draw_loop_blocks_area()    
     
-    def _sync_engine_to_playback_position(self):
-        total_width = self._calculate_total_visual_width()
-        total_duration = self.engine.get_total_duration()
+    
+    def _manual_x_to_time(self, x):
+        if self.engine.get_measure_count() == 0:
+            return 0
+        
+        measure_idx = int(x // self.measure_width)
+        measure_idx = max(0, min(measure_idx, self.engine.get_measure_count() - 1))
 
-        if total_width <= 0 or total_duration <= 0:
-            return
+        measure_start_time = self.engine.get_time_at_measure(measure_idx)
+        measure_duration = self.engine.get_duration_of_measures(measure_idx, measure_idx)
 
-        progress = self.manual_playback_x / total_width
-        new_time = progress * total_duration
+        local_x = x % self.measure_width
+        progress = local_x / self.measure_width
 
-        with self.engine.lock:
-            self.engine.absolute_position = int(new_time * self.engine.SAMPLE_RATE)
+        return measure_start_time + progress * measure_duration
 
     def _get_grid_top_y(self):
         return self.visible_area_rect.y + self.header_height
@@ -387,6 +405,30 @@ class GridPanel:
         self.block_selected = None
 
 
+    def get_playhead_x(self):
+        return self.manual_playback_x
+    
+    
+    def ensure_playhead_visible(self):
+        playhead_x = self.get_playhead_x()
+
+        left = self.scroll_x
+        right = self.scroll_x + self.visible_area_rect.width
+
+        margin = 120
+
+        if playhead_x < left + margin:
+            self.scroll_x = max(0, playhead_x - margin)
+
+        elif playhead_x > right - margin:
+            self.scroll_x = min(
+                playhead_x - self.visible_area_rect.width + margin,
+                self.max_scroll_x
+            )
+
+        self._update_thumb_position()
+
+
     def draw(self, surface):        
         pygame.draw.rect(surface, (35, 35, 35), self.visible_area_rect)
 
@@ -400,18 +442,33 @@ class GridPanel:
                 pygame.draw.rect(surface, (100, 100, 100), self.scrollbar_thumb_rect)
                 pygame.draw.rect(surface, (150, 150, 150), self.scrollbar_thumb_rect, 1)            
 
+        self._update_thumb_position()
         self.draw_playback_line(surface)        
 
 
     # --- Método para manejar eventos (incluyendo scroll y clicks) ---
-    def handle_event(self, event):        
+    def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # ------------------------------
-            # CLICK SOBRE PLAYBACK LINE
-            # ------------------------------
 
             mouse_x, mouse_y = event.pos
 
+            # ---------------------------------
+            # 1. SCROLLBAR (Prioridad y solo en Pausa)
+            # ---------------------------------
+            if self.engine.is_playing():
+                pass
+            else:
+                if self.max_scroll_x > 0 and self.scrollbar_thumb_rect.collidepoint(event.pos):
+                    self.is_dragging_thumb = True
+                    self.user_scrolling = True
+                    self.auto_follow_playback = False
+                    self.thumb_drag_start_x = mouse_x
+                    self.scroll_start_on_drag = self.scroll_x
+                    return
+
+            # ---------------------------------
+            # 2. PLAYBACK LINE DRAG
+            # ---------------------------------
             line_screen_x = self.visible_area_rect.x + (self.manual_playback_x - self.scroll_x)
 
             line_rect = pygame.Rect(
@@ -424,156 +481,115 @@ class GridPanel:
             if line_rect.collidepoint(mouse_x, mouse_y):
                 self.is_dragging_playback = True
                 self.auto_follow_playback = False
-                return   
+                return
 
-            # ------------------------------
-            # CLICK EN ZONA VACÍA INFERIOR (solo ahí mover playback)
-            # ------------------------------
+            # ---------------------------------
+            # 3. PLAYHEAD CLICK AREA (zona inferior)
+            # ---------------------------------
+            playhead_click_area = self._get_playhead_click_area()
 
-            grid_bottom_y = (
+            if playhead_click_area.collidepoint(event.pos) and not self.engine.is_playing():
+                content_x = (mouse_x - self.visible_area_rect.x) + self.scroll_x
+
+                self.manual_playback_x = content_x
+                new_time = self._manual_x_to_time(content_x)
+                real_time = self.engine.visual_time_to_absolute_time(new_time)
+                self.engine.set_playback_position_seconds(real_time)
+
+                self.ensure_playhead_visible()
+                return
+
+            # ---------------------------------
+            # 4. HEADER (selección / pegar)
+            # ---------------------------------
+            if self.visible_area_rect.collidepoint(event.pos) and \
+               mouse_y < self.visible_area_rect.y + self.header_height:
+
+                content_x = (mouse_x - self.visible_area_rect.x) + self.scroll_x
+                measure_idx = int(content_x // self.measure_width)
+
+                if 0 <= measure_idx < self.engine.get_measure_count():
+
+                    if self.gui.measure_panel.waiting_for_paste:
+                        source_idx = self.gui.measure_panel.copied_measure_index
+
+                        if source_idx is not None:
+                            self.engine.duplicate_measure(source_idx, measure_idx)
+
+                        self.gui.measure_panel.waiting_for_paste = False
+                        self.gui.measure_panel.copied_measure_index = None
+                        self.selected_measures_indices = []
+                        self._update_content_surface()
+                        return
+
+                    if measure_idx in self.selected_measures_indices:
+                        self.selected_measures_indices.remove(measure_idx)
+                    else:
+                        self.selected_measures_indices.append(measure_idx)
+
+                    self._update_content_surface()
+                    return
+
+            # ---------------------------------
+            # 5. BLOCK AREA
+            # ---------------------------------
+            block_area = self._get_block_area_screen()
+
+            if block_area.collidepoint(event.pos):
+                content_x = (mouse_x - self.visible_area_rect.x) + self.scroll_x
+                measure_clicked = int(content_x // self.measure_width)
+
+                for loop in self.engine.loop_blocks:
+                    if loop.start <= measure_clicked <= loop.end:
+                        self.selected_measures_indices = list(range(loop.start, loop.end + 1))
+                        self.block_selected = loop
+                        self._update_content_surface()
+                        return
+
+            # ---------------------------------
+            # 6. GRID (toggle cells)
+            # ---------------------------------
+            grid_top = self.visible_area_rect.y + self.header_height
+            grid_bottom = (
                 self.visible_area_rect.y
                 + self.current_content_draw_height
                 - self.layout.bottom_space
-            )            
-            
-            
-            # Manejar arrastre del thumb de la barra de scroll
-            if self.max_scroll_x > 0 and self.scrollbar_thumb_rect.collidepoint(event.pos):            
-                self.is_dragging_thumb = True
-                self.user_scrolling = True
-                self.auto_follow_playback = False
-                self.thumb_drag_start_x = event.pos[0]
-                self.scroll_start_on_drag = self.scroll_x                
-                return # Consumir el evento si es un clic en el thumb
-            
+            )
 
-            
+            if self.visible_area_rect.collidepoint(event.pos) and (grid_top <= mouse_y < grid_bottom):
 
-            # --- Lógica de SELECCIÓN de compás (clic en cabecera) ---            
+                content_x = (mouse_x - self.visible_area_rect.x) + self.scroll_x
+                content_y = mouse_y - self.visible_area_rect.y
 
-            if self.visible_area_rect.collidepoint(event.pos) and \
-               event.pos[1] < self.visible_area_rect.y + self.header_height:
-                                
-                click_pos_in_visible_area = (event.pos[0] - self.visible_area_rect.x,
-                                           event.pos[1] - self.visible_area_rect.y)
-                click_pos_in_content_surface = (click_pos_in_visible_area[0] + self.scroll_x,
-                                              click_pos_in_visible_area[1])                
-                header_height = self.header_height  
-                
-                for measure_idx in range(self.engine.get_measure_count()):
-                    header_rect_content = pygame.Rect(measure_idx * self.measure_width, 0, self.measure_width, self.header_height)
-                    if header_rect_content.collidepoint(click_pos_in_content_surface):
-                        # ---- MODO PEGAR ----
-                        if self.gui.measure_panel.waiting_for_paste:
-                            source_idx = self.gui.measure_panel.copied_measure_index                            
-
-                            if source_idx is not None:
-                                insert_idx = measure_idx
-                                self.engine.duplicate_measure(source_idx, insert_idx)
-
-                            self.gui.measure_panel.waiting_for_paste = False
-                            self.gui.measure_panel.copied_measure_index = None
-
-                            self.selected_measures_indices = []
-                            self._update_content_surface()
-                            return
-                        if measure_idx in self.selected_measures_indices:
-                            self.selected_measures_indices.remove(measure_idx)                            
-                        else:
-                            self.selected_measures_indices.append(measure_idx)                            
-                        self._update_content_surface()
-
-                        return # Consumir el evento
-             
-            elif self.visible_area_rect.collidepoint(event.pos):
-                # ---------------------------------
-                # CLICK EN BLOQUE
-                # ---------------------------------
-                block_area = self._get_block_area_screen()
-
-                if block_area.collidepoint(event.pos):
-                    click_x = event.pos[0] - self.visible_area_rect.x + self.scroll_x
-                    measure_clicked = int(click_x // self.measure_width)
-
-                    for loop in self.engine.loop_blocks:
-                        if loop.start <= measure_clicked <= loop.end:
-                            self.selected_measures_indices = list(
-                                range(loop.start, loop.end + 1)
-                            )
-                            self.block_selected = loop
-                            self._update_content_surface()
-                            return                
-
-                # -----------------------------------------
-                # CALCULAR AREA REAL DEL GRID (igual que draw)
-                # -----------------------------------------
-
-                grid_top = self.visible_area_rect.y + self.header_height
-                grid_bottom = (
-                    self.visible_area_rect.y
-                    + self.current_content_draw_height
-                    - self.layout.bottom_space
-                )
-
-                # Si el click no está dentro del área real del grid → salir
-                if not (grid_top <= event.pos[1] < grid_bottom):
-                    return
-
-                click_pos_in_visible_area = (
-                    event.pos[0] - self.visible_area_rect.x,
-                    event.pos[1] - self.visible_area_rect.y
-                )
-
-                click_pos_in_content_surface = (
-                    click_pos_in_visible_area[0] + self.scroll_x,
-                    click_pos_in_visible_area[1]
-                )
-
-                measure_idx = int(click_pos_in_content_surface[0] // self.measure_width)
+                measure_idx = int(content_x // self.measure_width)
 
                 if 0 <= measure_idx < self.engine.get_measure_count():
-                
-                    # -----------------------------------------
-                    # CALCULAR FILA EXACTAMENTE COMO EN DRAW
-                    # -----------------------------------------
 
                     instruments = self.engine.get_instruments()
                     num_instruments = len(instruments)
 
-                    drawable_grid_area_height = (
+                    drawable_height = (
                         self.current_content_draw_height
                         - self.header_height
                         - self.layout.bottom_space
                     )
 
-                    inst_row_height = (
-                        drawable_grid_area_height // num_instruments
-                        if num_instruments > 0 else 40
-                    )
+                    inst_row_height = drawable_height // num_instruments if num_instruments > 0 else 40
 
-                    relative_y = event.pos[1] - grid_top
+                    relative_y = mouse_y - grid_top
                     inst_idx = int(relative_y // inst_row_height)
 
                     beats = self.engine.get_measure_info(measure_idx)
                     beats_per_measure = beats.get('length', 4)
+                    subdivisions = self.engine.get_subdivisions(measure_idx)
 
-                    subdivisions_per_beat = self.engine.get_subdivisions(measure_idx)
+                    beat_width = self.measure_width / beats_per_measure
+                    subdiv_width = beat_width / subdivisions
 
-                    beat_width = (
-                        self.measure_width / beats_per_measure
-                        if beats_per_measure > 0 else self.measure_width
-                    )
-
-                    subdiv_width = (
-                        beat_width / subdivisions_per_beat
-                        if subdivisions_per_beat > 0 else beat_width
-                    )
-
-                    click_x_in_measure = click_pos_in_content_surface[0] % self.measure_width
+                    click_x_in_measure = content_x % self.measure_width
 
                     beat_idx = int(click_x_in_measure // beat_width)
-                    click_x_in_beat = click_x_in_measure % beat_width
-                    subdiv_idx = int(click_x_in_beat // subdiv_width)
+                    subdiv_idx = int((click_x_in_measure % beat_width) // subdiv_width)
 
                     if 0 <= inst_idx < len(instruments):
                         instrument_name = instruments[inst_idx]
@@ -582,57 +598,64 @@ class GridPanel:
                         self.gui.mark_project_dirty()
                         return
 
-            block_click_area = self._get_block_area_screen()
-
-            if block_click_area.collidepoint(event.pos) and not self.engine.is_playing():
-                click_visible_x = event.pos[0] - self.visible_area_rect.x
-                self.manual_playback_x = click_visible_x + self.scroll_x
-                self.auto_follow_playback = False
-                return
-
+        # ---------------------------------
+        # MOUSE UP
+        # ---------------------------------
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            if self.is_dragging_playback:
-                self.is_dragging_playback = False
-                return
-            if self.is_dragging_thumb:                  
-                self.is_dragging_thumb = False
-                self.user_scrolling = False
+            self.is_dragging_playback = False
+            self.is_dragging_thumb = False
+            self.user_scrolling = False
+
+        # ---------------------------------
+        # MOUSE MOTION
+        # ---------------------------------
         elif event.type == pygame.MOUSEMOTION:
-            # ------------------------------
-            # DRAG PLAYBACK LINE
-            # ------------------------------
+
+            mouse_x = event.pos[0]
+
+            # DRAG PLAYBACK
             if self.is_dragging_playback:
-                mouse_x = event.pos[0]
                 visible_x = mouse_x - self.visible_area_rect.x
-                self.manual_playback_x = visible_x + self.scroll_x
+                content_x = visible_x + self.scroll_x
+
+                self.manual_playback_x = content_x
+                new_time = self._manual_x_to_time(content_x)
+                real_time = self.engine.visual_time_to_absolute_time(new_time)
+                self.engine.set_playback_position_seconds(real_time)
+
+                self.ensure_playhead_visible()
                 return
-            # ------------------------------
-            # DRAG SCROLLBAR THUMB
-            # ------------------------------
+
+            # DRAG SCROLLBAR
             if self.is_dragging_thumb:
-                drag_delta_x = event.pos[0] - self.thumb_drag_start_x
-                scrollbar_track_width = self.scrollbar_track_rect.width
+                drag_delta = mouse_x - self.thumb_drag_start_x
+
+                track_width = self.scrollbar_track_rect.width
                 thumb_width = self.scrollbar_thumb_rect.width
-                if (scrollbar_track_width - thumb_width) > 0:
-                    scroll_delta_x = drag_delta_x * (
-                        self.max_scroll_x / (scrollbar_track_width - thumb_width)
-                    )
+
+                if track_width - thumb_width > 0:
+                    scroll_delta = drag_delta * (self.max_scroll_x / (track_width - thumb_width))
                 else:
-                    scroll_delta_x = 0
-                new_scroll_x = self.scroll_start_on_drag + scroll_delta_x
-                self.scroll_x = max(0, min(new_scroll_x, self.max_scroll_x))
+                    scroll_delta = 0
+
+                new_scroll = self.scroll_start_on_drag + scroll_delta
+                self.scroll_x = max(0, min(new_scroll, self.max_scroll_x))
+
                 self._update_thumb_position()
                 return
+
+        # ---------------------------------
+        # ESCAPE
+        # ---------------------------------
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:                            
-                # Cancelar copy/paste
+            if event.key == pygame.K_ESCAPE:
+
                 if hasattr(self.gui.measure_panel, "waiting_for_paste"):
                     self.gui.measure_panel.waiting_for_paste = False
                     self.gui.measure_panel.copied_measure_index = None
-                # Limpiar selección
+
                 self.selected_measures_indices = []
-                self._update_content_surface()
-                return        
+                self._update_content_surface()     
 
     def update(self):
         pass

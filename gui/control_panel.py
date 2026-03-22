@@ -44,6 +44,14 @@ class ControlPanel:
         # if self.pause_button:
         #      self.pause_button.image = self.pause_button.hover_image_scaled # Establecer la imagen inicial de PAUSE a "on"
 
+        # Para mantener presionado subir o bajar BPM
+        self.bpm_hold_direction = 0   # 1 = up, -1 = down, 0 = nada
+        self.bpm_hold_start_time = 0
+        self.bpm_last_step_time = 0
+
+        self.BPM_HOLD_THRESHOLD = 1.0  # en segundos
+        self.BPM_REPEAT_INTERVAL = 0.2  # en segundos
+
 
     def _create_buttons(self):
         # Definir dimensiones base para los botones de reproduccin (ajusta estos valores)
@@ -195,17 +203,31 @@ class ControlPanel:
         
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.bpm_up_rect.collidepoint(event.pos):
-                self.engine.bpm += 1
+                self.engine.set_bpm(self.engine.get_bpm() + 1)
+                # Chequea si se mantiene presionado
+                self.bpm_hold_direction = 1
+                self.bpm_hold_start_time = pygame.time.get_ticks() / 1000
+                self.bpm_last_step_time = self.bpm_hold_start_time
 
-            if self.bpm_down_rect.collidepoint(event.pos):
+            elif self.bpm_down_rect.collidepoint(event.pos):
                 if self.engine.bpm > 20:
-                    self.engine.bpm -= 1
+                    self.engine.set_bpm(self.engine.get_bpm() - 1)
+                    # Chequea si se mantiene presionado
+                    self.bpm_hold_direction = -1
+                    self.bpm_hold_start_time = pygame.time.get_ticks() / 1000
+                    self.bpm_last_step_time = self.bpm_hold_start_time
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.bpm_hold_direction = 0
 
 
     def update(self):
         # DIBUJO CONTROL PANEL EN PANTALLA (fondo)
         self.screen.fill(PANEL_BG_COLOR, self.rect)
         pygame.draw.rect(self.screen, PANEL_BORDER_COLOR, self.rect, PANEL_BORDER_THICKNESS)
+
+        # Calculamos el tiempo transcurrido para utilizar para contar si se está manteniendo presionado arriba o abajo en BPM
+        current_time = pygame.time.get_ticks() / 1000
 
         if self.image:
              self.screen.blit(self.image, self.rect)
@@ -280,31 +302,36 @@ class ControlPanel:
         
         self.is_playing = self.engine.is_playing()
 
+        # Vemos si se mantiene apretado arriba o abajo en BPM
+        if self.bpm_hold_direction != 0:
+            hold_time = current_time - self.bpm_hold_start_time
+
+            # Si pasaron los 2 segundos comienza a modificar de a 10 BPM
+            if hold_time >= self.BPM_HOLD_THRESHOLD:
+                # Controlar intervalo de repetición
+                if current_time - self.bpm_last_step_time >= self.BPM_REPEAT_INTERVAL:
+                    new_bpm = self.engine.get_bpm() + (10 * self.bpm_hold_direction)
+
+                    # Clamp mínimo
+                    if new_bpm < 20:
+                        new_bpm = 20
+                    
+                    self.engine.set_bpm(new_bpm)
+                    self.bpm_last_step_time = current_time
+
 
     def _play(self):
         if not self.engine.is_playing():
-
-            # ----------------------------------------
-            # ARRANCAR DESDE PLAYBACK LINE POSITION
-            # ----------------------------------------
-
             grid = self.gui.grid_panel
-
-            total_width = grid._calculate_total_visual_width()
-            total_duration = self.engine.get_total_duration()
-
-            if total_width > 0 and total_duration > 0:
-                percentage = grid.manual_playback_x / total_width
-                new_time = percentage * total_duration
-                self.engine.set_playback_time(new_time)
-
-            # Sincronizar posición antes de arrancar
-            if hasattr(self.gui, "grid_panel"):
-                self.gui.grid_panel.sync_engine_position()
+            
+            pos_seconds = self.engine.get_playback_position_seconds()
+            self.engine.set_playback_position_seconds(pos_seconds)
 
             self.engine.start()
+
             self.is_playing = True
-            self.gui.grid_panel.auto_follow_playback = True
+            grid.user_scrolling = False
+            grid.auto_follow_playback = True
 
 
     def _pause(self):

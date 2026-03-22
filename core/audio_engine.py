@@ -32,7 +32,8 @@ class AudioEngine:
         self.absolute_position = 0        
         self.playing = False        
         self.total_duration = 0
-        self.lock = threading.Lock()
+        self.scrub_speed = 2.0 # Recorre 2 segundos por segundo
+        self.lock = threading.RLock()
         self.bpm = DEFAULT_BPM
 
         # Lista para almacenar la informacin de cada medida (beats y subdivisiones)
@@ -47,11 +48,28 @@ class AudioEngine:
     def set_bpm(self, bpm: float):
         if bpm <= 0:
             return
+        
         with self.lock:
+            # Guardar tiempo actual (en segundos)
+            current_time = self.absolute_position / SAMPLE_RATE
+
+            # Convertir a tiempo visual (sin loops)
+            visual_time = self.get_visual_time()
+
+            # Cambiar BPM
             self.bpm = bpm
-            self.total_duration = self.calculate_total_duration()
+
+            # Regenerar eventos con nuevo BPM
             self.generate_events()
-            self.absolute_position = 0
+
+            # Convertir tiempo visual a nuevo tiempo absoluto
+            new_absolute_time = self.visual_time_to_absolute_time(visual_time)
+
+            # Aplicar nueva posición sin resetear
+            self.absolute_position = int(new_absolute_time * SAMPLE_RATE)
+
+    def get_bpm(self):
+        return self.bpm
 
     
     def add_loop_block(self, start_idx: int, end_idx: int, times: int):
@@ -172,10 +190,29 @@ class AudioEngine:
     def set_playback_time(self, time_seconds):
         self.current_playback_time = max(0, min(time_seconds, self.get_total_duration()))
 
+    def get_playback_position_seconds(self):
+        return self.absolute_position / SAMPLE_RATE
+    
     def set_playback_position_seconds(self, seconds: float):
         with self.lock:
             seconds = max(0, min(seconds, self.total_duration))
             self.absolute_position = int(seconds * SAMPLE_RATE)
+    
+    def scrub(self, direction, delta_time):        
+        if self.playing:
+            return
+        
+        with self.lock:
+            # Convertimos a segundos
+            current_seconds = self.absolute_position / SAMPLE_RATE
+    
+            current_seconds += direction * self.scrub_speed * delta_time
+    
+            # Clamp en segundos
+            current_seconds = max(0, min(current_seconds, self.total_duration))
+    
+            # Volver a samples
+            self.absolute_position = int(current_seconds * SAMPLE_RATE)    
 
     def update_measure_structure(self, measure_idx: int, beats: int, subdivisions: int):
         if beats <= 0 or subdivisions <= 0:
@@ -489,6 +526,58 @@ class AudioEngine:
             accumulated += measure_duration
 
         return self.get_measure_count() - 1, 0.0
+    
+
+    def visual_time_to_absolute_time(self, visual_time: float) -> float:
+        """
+        Convierte tiempo SIN loops (visual/UI)
+        a tiempo REAL (expandido con loops)
+        """
+
+        if not self.loop_blocks:
+            return visual_time
+
+        absolute_time = 0.0
+        accumulated_visual = 0.0
+
+        i = 0
+
+        while i < len(self.measures):
+
+            # ¿hay loop que empieza acá?
+            loop_found = None
+            for loop in self.loop_blocks:
+                if loop.start == i:
+                    loop_found = loop
+                    break
+
+            if loop_found:
+                loop_start_time = accumulated_visual
+                loop_duration = self.get_duration_of_measures(loop.start, loop.end)
+
+                if visual_time < loop_start_time + loop_duration:
+                    # Estamos dentro del loop (primera iteración)
+                    return absolute_time + (visual_time - loop_start_time)
+
+                # Saltar todo el bloque expandido
+                accumulated_visual += loop_duration
+                absolute_time += loop_duration * loop_found.times
+
+                i = loop_found.end + 1
+                continue
+
+            # Compás normal
+            measure_duration = self.get_duration_of_measures(i, i)
+
+            if visual_time < accumulated_visual + measure_duration:
+                return absolute_time + (visual_time - accumulated_visual)
+
+            accumulated_visual += measure_duration
+            absolute_time += measure_duration
+
+            i += 1
+
+        return absolute_time
     
 
     # Genera la lista de eventos de audio basados en el patrn actual

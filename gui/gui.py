@@ -311,7 +311,7 @@ class DrumGUI:
         self.grid_panel._update_content_surface()
 
         while running:
-            time_delta = self.clock.tick(60)/1000.0 # Manejar el tiempo (60 FPS)
+            time_delta = self.clock.tick(60)/1000.0 # Manejar el tiempo (60 FPS)            
 
             # --- Bucle de Eventos ---
             for event in pygame.event.get():
@@ -351,6 +351,17 @@ class DrumGUI:
                         continue                     
                     if hasattr(panel, 'handle_event'):
                         panel.handle_event(event)
+            
+            keys = pygame.key.get_pressed()
+
+            if not self.engine.playing:
+                if keys[pygame.K_LEFT]:                    
+                    self.engine.scrub(-1, time_delta)
+                    self.grid_panel.ensure_playhead_visible()
+                    self.grid_panel._update_thumb_position()
+                if keys[pygame.K_RIGHT]:
+                    self.engine.scrub(1, time_delta)
+                    self.grid_panel.ensure_playhead_visible()            
 
             if not self.popup_manager.has_active_popup():
                 # --- Fase de Actualización ---

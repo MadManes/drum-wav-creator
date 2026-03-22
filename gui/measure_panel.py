@@ -131,11 +131,12 @@ class MeasurePanel:
         # Botones ADD Measure
         #add_button_rect = pygame.Rect(self.width - 100, self.height // 2 - 45, 90, 90)
         button_size = 80
-        button_y = self.height // 2 - 45        
+        button_y = self.height // 2 - 45
+        button_height = button_size // 2
 
         # Add First
         self.add_first_button = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect(self.width - 270, button_y, button_size, 90),
+            relative_rect=pygame.Rect(self.width - 270, button_y, button_size, button_height),
             text="+ First",
             manager=self.manager,
             container=self.panel_container
@@ -143,7 +144,7 @@ class MeasurePanel:
 
         # Add After
         self.add_after_button = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect(self.width - 180, button_y, button_size, 90),
+            relative_rect=pygame.Rect(self.width - 180, button_y, button_size, button_height),
             text="+ After",
             manager=self.manager,
             container=self.panel_container
@@ -151,7 +152,7 @@ class MeasurePanel:
 
         # Add Last
         self.add_last_button = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect(self.width - 90, button_y, button_size, 90),
+            relative_rect=pygame.Rect(self.width - 90, button_y, button_size, button_height),
             text="+ Last",
             manager=self.manager,
             container=self.panel_container
@@ -159,7 +160,7 @@ class MeasurePanel:
 
 
         # Botón DEL Measure
-        del_button_rect = pygame.Rect(self.width - 360, self.height // 2 - 45, 90, 90)
+        del_button_rect = pygame.Rect(self.width - 360, self.height // 2 - 45, 90, button_height)
         self.del_measure_button = pygame_gui.elements.UIButton(
             relative_rect=del_button_rect,
             text="DEL",
@@ -169,7 +170,7 @@ class MeasurePanel:
         )
 
         self.copy_button = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect(self.width - 450, button_y, 80, 90),
+            relative_rect=pygame.Rect(self.width - 450, button_y, 80, button_height),
             text="COPY",
             manager=self.manager,
             container=self.panel_container
