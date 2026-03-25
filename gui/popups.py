@@ -315,3 +315,33 @@ class ConfirmLoadProjectPopup(BasePopup):
             if self.no_rect.collidepoint(event.pos):
                 self.gui.load_project()
                 self.close()
+
+
+class LargeHelpPopup(BasePopup):
+
+    def __init__(self, gui):
+        super().__init__(gui, "large")
+
+        self.font = pygame.font.SysFont("arial", 20)
+
+        self.message = "HelpPanel"        
+
+    def draw(self):
+        super().draw()
+
+        mouse_pos = pygame.mouse.get_pos()        
+
+        # --- Mensaje ---
+        text_surface = self.font.render(self.message, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=(self.rect.centerx, self.rect.centery - 20))
+        self.screen.blit(text_surface, text_rect)        
+
+        #no_text = self.font.render("No", True, (255, 255, 255))
+        #self.screen.blit(no_text, no_text.get_rect(center=self.no_rect.center))
+
+    def handle_event(self, event):
+        super().handle_event(event)
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+
+            pass

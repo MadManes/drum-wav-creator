@@ -10,9 +10,12 @@ class GridPanel:
         self.gui = gui
         self.layout = layout
 
-        self.copy_highlight_color = (0, 200, 0)
-        
+        # Colores debería mudarlo a constantes
+        self.copy_highlight_color = (0, 200, 0)        
         self.playback_line_color = (0, 200, 200)  # Turquesa
+        self.first_beat_color = (22, 20, 22)
+        self.beat_color = (32, 30, 34)
+
         self.playback_line_thickness = 2
         self.last_playback_position = 0
         self.manual_playback_x = 0  # posición absoluta en el contenido (no visible)
@@ -146,6 +149,7 @@ class GridPanel:
         
         for beat_idx in range(beats_per_measure):
             beat_x_base = x_base + (beat_idx * beat_width)
+
             for subdiv_idx in range(subdivisions_per_beat):
                 x_pos = beat_x_base + (subdiv_idx * subdiv_width)
 
@@ -158,7 +162,10 @@ class GridPanel:
                     state = self.engine.get_cell_state(inst, measure_idx, beat_idx, subdiv_idx)
 
 
-                    color = (200, 0, 0) if state == 1 else (80, 80, 80)
+                    if state == 1: color = (195, 15, 10) 
+                    else:
+                        color = self.first_beat_color if subdiv_idx == 0 else self.beat_color
+
                     pygame.draw.rect(surface, color, rect)
                     pygame.draw.rect(surface, (100,100,100), rect, 1)
 
@@ -206,7 +213,7 @@ class GridPanel:
         )
 
         pygame.draw.rect(self.content_surface, (50, 50, 50), header_rect)
-        pygame.draw.rect(self.content_surface, (255, 255, 0), header_rect, 2)
+        pygame.draw.rect(self.content_surface, (105, 100, 102), header_rect, 2)
 
         # Texto del número de compás
         text = self.gui.font.render(

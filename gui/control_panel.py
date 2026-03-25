@@ -1,5 +1,5 @@
 import pygame
-import os
+import os, sys
 from .button import Button
 
 PANEL_BG_COLOR = (50,50,50)
@@ -192,8 +192,9 @@ class ControlPanel:
 
     
     def _exit_program(self):
+        self.engine.stop()
         pygame.quit()
-        exit()
+        sys.exit()
 
 
     def handle_event(self, event):

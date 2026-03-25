@@ -1,7 +1,7 @@
 import pygame
 
-DIVIDER_COLOR = (255, 105, 180)  # estilo rosa como tu prueba
-TEXT_COLOR = (200, 200, 200)
+DIVIDER_COLOR = (92, 96, 98)  # estilo rosa como tu prueba
+TEXT_COLOR = (205, 200, 210)
 
 class InstrumentsPanel:
     def __init__(self, x, y, screen, gui, layout):
@@ -34,7 +34,7 @@ class InstrumentsPanel:
         
     # ---------------------------------------------------
 
-    def update(self):
+    def update(self):        
         self.screen.blit(self.image, self.rect)
         
         instrument_count = len(self.instruments)
@@ -54,29 +54,36 @@ class InstrumentsPanel:
         font_size = int(row_height * 0.4)
         font = pygame.font.SysFont("arial", font_size)
 
-        for i, name in enumerate(self.instruments):
+        num_lines = len(self.instruments) + 1
+
+        for i in range(num_lines):
+            if i < num_lines - 1: name = self.instruments[i]
+            else: name = ""
+            #name = self.instruments[i] if i < num_lines else ""
 
             row_y = self.y + header_height + i * row_height
 
             row_rect = pygame.Rect(
-                self.x,
+                self.x + 10,
                 int(row_y),
-                self.width,
+                self.width - 40,
                 int(row_height)
             )
 
             # Línea divisoria EXACTAMENTE alineada
             pygame.draw.line(
                 self.screen,
-                (255,105,180),
-                (row_rect.left, row_rect.top),
-                (row_rect.right, row_rect.top),
+                DIVIDER_COLOR,
+                (row_rect.left, row_rect.top - 1),
+                (row_rect.right, row_rect.top - 1),
                 2
-            )            
-
-            text_surface = font.render(name, True, (200,200,200))
-            text_rect = text_surface.get_rect(
-                midleft=(self.x + 10, row_rect.centery)
             )
 
-            self.screen.blit(text_surface, text_rect)
+            if name:
+                text_surface = font.render(name, True, (200,200,200))
+                text_rect = text_surface.get_rect(
+                    midleft=(self.x + 10, row_rect.centery)
+                )
+
+                self.screen.blit(text_surface, text_rect)
+
